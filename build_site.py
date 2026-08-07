@@ -11,12 +11,15 @@ import csv
 import datetime as dt
 import json
 import math
+import statistics as st
 from collections import defaultdict
 
 import ramp
 
 CSV_IN = "rhein_rekingen_daily.csv"
-MIN_DAYS = 30  # a year with fewer points than this is a portal artifact, not a line
+MIN_DAYS = 30    # a year with fewer points than this is a portal artifact, not a line
+FULL_DAYS = 360  # below this a year's mean is not comparable, so it stays out of the trend
+R2_STRONG = 0.1  # under this the fit explains so little that calling it a trend would mislead
 
 MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
@@ -87,6 +90,38 @@ def axis_for(values, zero):
     return [round(lo, 6), round(hi, 6)], ticks
 
 
+def trend_for(years, by_year):
+    """Annual means plus a least-squares fit over them.
+
+    Only years that are essentially complete take part — a partial year's mean is
+    biased by whichever seasons it happens to contain and is not comparable.
+    """
+    pts = [(i, y, by_year[y]) for i, y in enumerate(years)
+           if sum(v is not None for v in by_year[y]) >= FULL_DAYS]
+    idx = [i for i, _, _ in pts]
+    yrs = [y for _, y, _ in pts]
+    means = [st.fmean(v for v in vals if v is not None) for _, _, vals in pts]
+
+    slope, intercept = st.linear_regression(yrs, means)
+    r = st.correlation(yrs, means)
+    domain, ticks = axis_for(means, zero=False)
+
+    return {
+        "idx": idx,
+        "means": [round(m, 4) for m in means],
+        "x0": yrs[0], "x1": yrs[-1],
+        "xticks": [y for y in range(math.ceil(yrs[0] / 5) * 5, yrs[-1] + 1, 5)],
+        "domain": domain, "ticks": ticks,
+        "y0": round(slope * yrs[0] + intercept, 4),   # fitted line endpoints
+        "y1": round(slope * yrs[-1] + intercept, 4),
+        "perDecade": round(slope * 10, 4),
+        "total": round(slope * (yrs[-1] - yrs[0]), 4),
+        "r2": round(r * r, 3),
+        "strong": r * r >= R2_STRONG,
+        "dropped": [y for y in years if y not in yrs],
+    }
+
+
 def main():
     years, data, missing = load()
     span = years[-1] - years[0]
@@ -106,6 +141,7 @@ def main():
             "decimals": p["decimals"], "scale": p["scale"], "offset": p["offset"],
             "domain": domain, "ticks": ticks,
             "series": [encode(by_year[y], p["scale"], p["offset"]) for y in years],
+            "trend": trend_for(years, by_year),
         })
 
     payload = {
@@ -285,6 +321,15 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .tt-lab { font-size: 0.75rem; color: var(--text-secondary); font-variant-numeric: tabular-nums; }
   .tt-sel { font-size: 0.7rem; color: var(--text-muted); }
 
+  .card + .card { margin-top: 16px; }
+  .card-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 10px; margin-bottom: 2px; }
+  .card-title { font-size: 0.95rem; font-weight: 600; margin: 0; }
+  .card-note { font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.45; }
+  .trend-line { stroke: var(--text-primary); stroke-width: 2; fill: none; stroke-linecap: round; }
+  .trend-line.weak { opacity: 0.28; }
+  .spine { stroke: var(--axis); stroke-width: 1; fill: none; opacity: 0.55; }
+  .dot-year circle { stroke: var(--surface-1); stroke-width: 2; }
+
   .legend { margin: 18px 0 4px; }
   .legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
   .legend-ticks {
@@ -349,6 +394,21 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     </div>
   </div>
 
+  <div class="card">
+    <div class="card-head"><h2 class="card-title" id="trend-title">Jahresmittel im Vergleich</h2></div>
+    <p class="card-note" id="trend-note"></p>
+    <div class="plot" id="trend-plot">
+      <svg id="trend" viewBox="0 0 960 250" role="img" aria-label="Jahresmittel je Jahrgang mit linearem Trend">
+        <g id="trend-grid"></g>
+        <path id="trend-spine" class="spine"></path>
+        <path id="trend-fit" class="trend-line"></path>
+        <g id="trend-dots"></g>
+        <g id="trend-axes"></g>
+      </svg>
+      <div class="tooltip" id="trend-tooltip" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
   <div class="years" id="years" role="group" aria-label="Jahr auswählen"></div>
 
   <p class="note">
@@ -377,6 +437,10 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     // ticks are whole numbers; they should not wear the value precision
     tickNf: new Intl.NumberFormat("de-CH", {
       minimumFractionDigits: 0, maximumFractionDigits: p.decimals
+    }),
+    // a rate needs one digit more than the value, or +0.484/decade rounds to +0.5
+    rateNf: new Intl.NumberFormat("de-CH", {
+      minimumFractionDigits: p.decimals + 1, maximumFractionDigits: p.decimals + 1
     }),
   }));
   let pi = 0;                       // active parameter
@@ -530,6 +594,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     });
     yearBtns.forEach((b, i) => b.setAttribute("aria-pressed", i === selected ? "true" : "false"));
     drawReadout();
+    renderTrendDots();
   }
 
   function fmt(v) { return P().nf.format(v) + " " + P().unit; }
@@ -653,6 +718,150 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     if (ev.key === "Escape") { selected = null; cursorDay = null; render(); }
   });
 
+  /* ---- second chart: one annual mean per year, plus a least-squares fit ---- */
+  const TW = 960, TH = 250;
+  const TM = { top: 26, right: 16, bottom: 30, left: 62 };
+  const TPW = TW - TM.left - TM.right;
+  const TPH = TH - TM.top - TM.bottom;
+
+  const tSvg = document.getElementById("trend");
+  const tGrid = document.getElementById("trend-grid");
+  const tAxes = document.getElementById("trend-axes");
+  const tDots = document.getElementById("trend-dots");
+  const tFit = document.getElementById("trend-fit");
+  const tSpine = document.getElementById("trend-spine");
+  const tTip = document.getElementById("trend-tooltip");
+
+  const tx = yr => {
+    const t = P().trend;
+    return TM.left + ((yr - t.x0) / (t.x1 - t.x0)) * TPW;
+  };
+  const ty = v => {
+    const [lo, hi] = P().trend.domain;
+    return TM.top + TPH - ((v - lo) / (hi - lo)) * TPH;
+  };
+
+  function drawTrend() {
+    const p = P(), t = p.trend;
+    tGrid.textContent = "";
+    tAxes.textContent = "";
+
+    t.ticks.forEach(v => {
+      tGrid.appendChild(el("line", { class: "grid-line", x1: TM.left, x2: TW - TM.right, y1: ty(v), y2: ty(v) }));
+      const lb = el("text", { class: "tick", x: TM.left - 9, y: ty(v) + 4, "text-anchor": "end" });
+      lb.textContent = p.tickNf.format(v);
+      tAxes.appendChild(lb);
+    });
+    const base = TM.top + TPH;
+    tAxes.appendChild(el("line", { class: "axis-line", x1: TM.left, x2: TW - TM.right, y1: base, y2: base }));
+    t.xticks.forEach(yr => {
+      const lb = el("text", { class: "tick", x: tx(yr), y: base + 18, "text-anchor": "middle" });
+      lb.textContent = yr;
+      tAxes.appendChild(lb);
+    });
+    const unit = el("text", { class: "axis-title", x: TM.left - 9, y: TM.top - 12, "text-anchor": "end" });
+    unit.textContent = p.unit;
+    tAxes.appendChild(unit);
+
+    // the year-to-year line stays recessive; it is context for the fit, not the point
+    // break the line across missing years rather than implying a measurement
+    tSpine.setAttribute("d", t.idx.map((ix, k) => {
+      const gap = k > 0 && YEARS[ix] - YEARS[t.idx[k - 1]] > 1;
+      return (k && !gap ? "L" : "M") + tx(YEARS[ix]).toFixed(1) + " " + ty(t.means[k]).toFixed(1);
+    }).join(" "));
+
+    tFit.setAttribute("d", `M${tx(t.x0).toFixed(1)} ${ty(t.y0).toFixed(1)} L${tx(t.x1).toFixed(1)} ${ty(t.y1).toFixed(1)}`);
+    tFit.classList.toggle("weak", !t.strong);
+
+    renderTrendDots();
+    writeTrendNote();
+  }
+
+  function renderTrendDots() {
+    const t = P().trend;
+    tDots.textContent = "";
+    t.idx.forEach((ix, k) => {
+      const lift = ix === selected || ix === hovered;
+      const g = el("g", { class: "dot-year" });
+      g.appendChild(el("circle", {
+        cx: tx(YEARS[ix]), cy: ty(t.means[k]), r: lift ? 6 : 4,
+        fill: colors[ix], opacity: (selected != null || hovered != null) && !lift ? 0.35 : 1,
+      }));
+      tDots.appendChild(g);
+    });
+  }
+
+  function writeTrendNote() {
+    const p = P(), t = p.trend;
+    const note = document.getElementById("trend-note");
+    const sign = t.perDecade > 0 ? "+" : "−";
+    const dec = p.rateNf.format(Math.abs(t.perDecade));
+    const tot = p.rateNf.format(Math.abs(t.total));
+    const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.r2);
+
+    note.textContent = t.strong
+      ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec} ${p.unit} pro Jahrzehnt, `
+        + `über ${t.x1 - t.x0} Jahre ${sign}${tot} ${p.unit} (r² = ${r2}). `
+        + `Nur vollständige Jahrgänge, ${t.x0}–${t.x1}; die Achse ist auf die Jahresmittel gezoomt.`
+      : `Ein Punkt je Jahrgang. Kein erkennbarer Trend — die Ausgleichsgerade erklärt nur `
+        + `r² = ${r2} der Schwankung, die Unterschiede zwischen den Jahren überwiegen deutlich `
+        + `(rechnerisch ${sign}${dec} ${p.unit} pro Jahrzehnt). `
+        + `Nur vollständige Jahrgänge, ${t.x0}–${t.x1}; die Achse ist auf die Jahresmittel gezoomt.`;
+  }
+
+  /* nearest year wins, so the pointer never has to hit a 8px dot dead-centre */
+  function nearestYear(ev) {
+    const t = P().trend;
+    const box = tSvg.getBoundingClientRect();
+    const sx = ((ev.clientX - box.left) / box.width) * TW;
+    let best = null, bestD = Infinity;
+    t.idx.forEach((ix, k) => {
+      const d = Math.abs(tx(YEARS[ix]) - sx);
+      if (d < bestD) { bestD = d; best = { ix, k }; }
+    });
+    return bestD < 24 ? best : null;
+  }
+
+  tSvg.addEventListener("pointermove", ev => {
+    const hit = nearestYear(ev);
+    const p = P(), t = p.trend;
+    if (!hit) { tTip.style.opacity = 0; hovered = null; render(); return; }
+    hovered = hit.ix;
+
+    tTip.textContent = "";
+    const head = document.createElement("div");
+    head.className = "tt-day";
+    head.textContent = "Jahresmittel";
+    tTip.appendChild(head);
+    const row = document.createElement("div");
+    row.className = "tt-row";
+    const key = document.createElement("span");
+    key.className = "tt-key";
+    key.style.background = colors[hit.ix];
+    const val = document.createElement("span");
+    val.className = "tt-val";
+    val.textContent = p.nf.format(t.means[hit.k]) + " " + p.unit;
+    const lab = document.createElement("span");
+    lab.className = "tt-lab";
+    lab.textContent = YEARS[hit.ix];
+    row.append(key, val, lab);
+    tTip.appendChild(row);
+
+    tTip.style.opacity = 1;
+    const box = tSvg.getBoundingClientRect();
+    const px = (tx(YEARS[hit.ix]) / TW) * box.width;
+    const flip = px > box.width - tTip.offsetWidth - 24;
+    tTip.style.left = (flip ? px - tTip.offsetWidth - 14 : px + 14) + "px";
+    tTip.style.top = "6px";
+    render();
+  });
+  tSvg.addEventListener("pointerleave", () => { tTip.style.opacity = 0; hovered = null; render(); });
+  tSvg.addEventListener("click", ev => {
+    const hit = nearestYear(ev);
+    selected = hit && selected !== hit.ix ? hit.ix : null;
+    render();
+  });
+
   /* ---- tabs: one parameter at a time, so the chart never carries two scales ---- */
   const tabsBox = document.getElementById("tabs");
   const panel = document.getElementById("panel");
@@ -691,6 +900,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       ", ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.");
     drawAxes();
     drawPaths();
+    drawTrend();
     render();
   }
 
