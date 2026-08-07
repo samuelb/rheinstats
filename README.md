@@ -50,6 +50,11 @@ deckt diese Visualisierung 42 Jahrgänge ab. Bekannte Lücken, alle quellenbedin
 - **29. Februar** fehlt durchgehend; die Quelle nutzt ein 365-Tage-Raster.
 - **2026** ist naturgemäss unvollständig.
 
+Die vollständigen Messreihen ab 1904, 1964 beziehungsweise 1969 sind beim
+Datenservice Hydrologie des BAFU angefragt. Sobald sie vorliegen und
+veröffentlicht werden dürfen, fliessen sie hier ein — die Darstellung deckt dann
+statt vier Jahrzehnten das ganze letzte Jahrhundert ab.
+
 Details zu allen geprüften Bezugsquellen in [`SOURCES.md`](SOURCES.md).
 
 ## Lizenz
