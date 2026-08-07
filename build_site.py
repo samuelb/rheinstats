@@ -369,7 +369,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   <p class="subtitle">
     BAFU-Messstation 2143, Tagesmittel — ein Linienzug pro Jahr, über den
     Jahresverlauf gelegt. Die Farbe codiert das Jahr, Blau die ältesten und Rot
-    die jüngsten Messungen. Eine Linie anklicken hebt ihr Jahr hervor.
+    die jüngsten Messungen. Das laufende Jahr ist hervorgehoben; eine Linie
+    anklicken hebt stattdessen deren Jahr hervor.
   </p>
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
@@ -509,8 +510,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
   /* ---- lines ---- */
   const linesG = document.getElementById("lines");
-  const paths = YEARS.map(() => {
-    const p = el("path", { class: "line", "stroke-width": 1.1 });
+  const paths = YEARS.map(yr => {
+    // data-year survives the reordering that lifts a line to the top
+    const p = el("path", { class: "line", "stroke-width": 1.1, "data-year": yr });
     linesG.appendChild(p);
     return p;
   });
@@ -583,15 +585,25 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   // translucent so 42 overlapping lines build density instead of hiding each other
   const OP_REST = 0.55, OP_DIM = 0.10, OP_LIFT = 1;
 
+  // the running year, so the emphasis moves on by itself as data is added
+  const CURRENT = Math.max(0, YEARS.indexOf(new Date().getFullYear()));
+
   function render() {
     const focus = hovered != null ? hovered : selected;
     const anyFocus = focus != null || selected != null;
     paths.forEach((p, i) => {
       const lift = i === focus || i === selected;
-      p.style.opacity = anyFocus ? (lift ? OP_LIFT : OP_DIM) : OP_REST;
-      p.setAttribute("stroke-width", lift ? 2.4 : 1.1);
-      if (lift) linesG.appendChild(p);   // lift to the top
+      const current = !anyFocus && i === CURRENT;   // yields as soon as a year is picked
+      p.style.opacity = anyFocus ? (lift ? OP_LIFT : OP_DIM) : (current ? OP_LIFT : OP_REST);
+      p.setAttribute("stroke-width", lift ? 2.4 : current ? 1.9 : 1.1);
     });
+    // draw order last, so the emphasised line is not buried under the rest
+    if (anyFocus) {
+      if (selected != null) linesG.appendChild(paths[selected]);
+      if (focus != null && focus !== selected) linesG.appendChild(paths[focus]);
+    } else {
+      linesG.appendChild(paths[CURRENT]);
+    }
     yearBtns.forEach((b, i) => b.setAttribute("aria-pressed", i === selected ? "true" : "false"));
     drawReadout();
     renderTrendDots();
