@@ -85,15 +85,6 @@
   }
   .tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
 
-  .controls { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 14px; }
-  .btn {
-    font: inherit; font-size: 0.82rem; color: var(--text-secondary);
-    background: var(--surface-1); border: 1px solid var(--hairline);
-    border-radius: 7px; padding: 6px 12px; cursor: pointer;
-  }
-  .btn:hover { background: var(--ghost); }
-  .btn[aria-pressed="true"] { color: var(--text-primary); border-color: var(--axis); font-weight: 600; }
-  .btn:focus-visible, .yr:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
   svg:focus { outline: none; }   /* a click must not leave a ring; keyboard still does */
   svg:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; border-radius: 8px; }
 
@@ -143,18 +134,9 @@
     display: inline-flex; align-items: center; gap: 5px;
   }
   .yr:hover { background: var(--ghost); }
+  .yr:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
   .yr[aria-pressed="true"] { color: var(--text-primary); font-weight: 600; border-color: var(--axis); }
   .yr-key { width: 10px; height: 3px; border-radius: 2px; flex: none; }
-
-  .table-wrap { margin-top: 18px; overflow-x: auto; max-height: 420px; overflow-y: auto; }
-  table { border-collapse: collapse; font-size: 0.78rem; width: 100%; }
-  caption { text-align: left; font-size: 0.8rem; color: var(--text-secondary); padding-bottom: 8px; }
-  th, td { padding: 4px 9px; text-align: right; white-space: nowrap; font-variant-numeric: tabular-nums; }
-  th { color: var(--text-secondary); font-weight: 600; position: sticky; top: 0; background: var(--surface-1); }
-  thead th { border-bottom: 1px solid var(--axis); }
-  tbody tr + tr td { border-top: 1px solid var(--grid); }
-  th:first-child, td:first-child { text-align: left; }
-  [hidden] { display: none !important; }
   .note { font-size: 0.75rem; color: var(--text-muted); margin-top: 22px; line-height: 1.6; }
   .note a { color: inherit; }
 </style>
@@ -169,11 +151,6 @@
   </p>
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
-
-  <div class="controls">
-    <button class="btn" id="reset" type="button">Auswahl aufheben</button>
-    <button class="btn" id="toggle-table" type="button" aria-pressed="false">Tabelle anzeigen</button>
-  </div>
 
   <div class="card" id="panel" role="tabpanel">
     <div class="plot" id="plot">
@@ -196,8 +173,6 @@
   </div>
 
   <div class="years" id="years" role="group" aria-label="Jahr auswählen"></div>
-
-  <div class="table-wrap" id="table-wrap" hidden><table id="table"></table></div>
 
   <p class="note">
     Quelle: Bundesamt für Umwelt BAFU, Station 2143 Rhein–Rekingen, Tagesmittel
@@ -378,7 +353,6 @@
     });
     yearBtns.forEach((b, i) => b.setAttribute("aria-pressed", i === selected ? "true" : "false"));
     drawReadout();
-    if (tableOpen) buildTable();
   }
 
   function fmt(v) { return P().nf.format(v) + " " + P().unit; }
@@ -501,67 +475,6 @@
   document.addEventListener("keydown", ev => {
     if (ev.key === "Escape") { selected = null; cursorDay = null; render(); }
   });
-  document.getElementById("reset").addEventListener("click", () => { selected = null; render(); });
-
-  /* ---- table view: the value path that needs no pointer ---- */
-  let tableOpen = false;
-  const tableWrap = document.getElementById("table-wrap");
-  const table = document.getElementById("table");
-  const btnTable = document.getElementById("toggle-table");
-
-  btnTable.addEventListener("click", () => {
-    tableOpen = !tableOpen;
-    tableWrap.hidden = !tableOpen;
-    btnTable.setAttribute("aria-pressed", String(tableOpen));
-    btnTable.textContent = tableOpen ? "Tabelle ausblenden" : "Tabelle anzeigen";
-    if (tableOpen) buildTable();
-  });
-
-  function mean(vals) {
-    const v = vals.filter(n => n != null);
-    return v.length ? v.reduce((a, b) => a + b, 0) / v.length : null;
-  }
-  const cell = (text, tag) => {
-    const c = document.createElement(tag || "td");
-    c.textContent = text;
-    return c;
-  };
-  const num = v => v == null ? "–" : P().nf.format(v);
-
-  function buildTable() {
-    table.textContent = "";
-    const cap = document.createElement("caption");
-    const head = document.createElement("thead");
-    const body = document.createElement("tbody");
-    const hr = document.createElement("tr");
-
-    if (selected != null) {
-      cap.textContent = "Tagesmittel " + YEARS[selected] + " — " + P().label + " in " + P().unit;
-      ["Datum", P().label].forEach(h => hr.appendChild(cell(h, "th")));
-      for (let d = 0; d < DAYS; d++) {
-        const v = SERIES()[selected][d];
-        if (v == null) continue;
-        const tr = document.createElement("tr");
-        tr.append(cell(dayLabel(d)), cell(num(v)));
-        body.appendChild(tr);
-      }
-    } else {
-      cap.textContent = "Monatsmittel " + P().label + " in " + P().unit + " — ein Jahr auswählen zeigt dessen Tagesmittel";
-      ["Jahr", ...D.months, "Jahr ⌀"].forEach(h => hr.appendChild(cell(h, "th")));
-      YEARS.forEach((yr, i) => {
-        const tr = document.createElement("tr");
-        tr.appendChild(cell(String(yr)));
-        D.months.forEach((_, m) => {
-          const from = monthStart[m];
-          tr.appendChild(cell(num(mean(SERIES()[i].slice(from, from + D.monthLengths[m])))));
-        });
-        tr.appendChild(cell(num(mean(SERIES()[i]))));
-        body.appendChild(tr);
-      });
-    }
-    head.appendChild(hr);
-    table.append(cap, head, body);
-  }
 
   /* ---- tabs: one parameter at a time, so the chart never carries two scales ---- */
   const tabsBox = document.getElementById("tabs");

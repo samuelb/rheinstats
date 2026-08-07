@@ -41,11 +41,10 @@ nicht dem BAFU anzulasten.
 | Wasserstand (m ü.M.)      | 1964                 |
 | Wassertemperatur (°C)     | 1969                 |
 
-Öffentlich abrufbar ist über die Jahresganglinien von hydrodaten.admin.ch
-allerdings nur **1981 bis heute**. Damit deckt diese Visualisierung 42 Jahrgänge
-ab. Bekannte Lücken, alle quellenbedingt:
+Öffentlich als Tagesmittel abrufbar ist allerdings nur **1981 bis heute**. Damit
+deckt diese Visualisierung 42 Jahrgänge ab. Bekannte Lücken, alle quellenbedingt:
 
-- **1983, 1985, 1986** liefert das Portal für keinen Parameter Daten.
+- **1983, 1985, 1986** liefert das Portal für keinen Parameter Tagesdaten.
 - **1988** liefert nur den 1. Januar — zu wenig für einen Linienzug, deshalb hier
   ausgelassen.
 - **29. Februar** fehlt durchgehend; die Quelle nutzt ein 365-Tage-Raster.
@@ -55,46 +54,13 @@ Die Lücken sind nicht auf einen Stationsausfall zurückzuführen: dieselben Jah
 fehlen auch bei anderen Stationen (2289 Basel, 2091 Rheinfelden), deren Reihen
 weit länger sind.
 
-**Die vollständigen Reihen ab 1904/1964/1969** gibt es kostenlos beim
-[Datenservice Hydrologie](https://www.bafu.admin.ch/de/datenservice-hydrologie-fuer-fliessgewaesser-und-seen)
-des BAFU (hydrologie@bafu.admin.ch). Details und geprüfte Alternativquellen in
-[`SOURCES.md`](SOURCES.md).
+Als **Monatsmittel** reichen die öffentlichen Daten deutlich weiter zurück — beim
+Abfluss bis 1904, bei der Temperatur bis 1970, beim Wasserstand bis 1974, und
+zwar lückenlos. Die **vollständigen Tagesreihen ab 1904/1964/1969** gibt es
+kostenlos beim [Datenservice Hydrologie](https://www.bafu.admin.ch/de/datenservice-hydrologie-fuer-fliessgewaesser-und-seen)
+des BAFU (hydrologie@bafu.admin.ch).
 
-## Aufbau
-
-| Datei                       | Zweck                                                      |
-| --------------------------- | ---------------------------------------------------------- |
-| `fetch_hydrodaten.py`       | holt die Tagesmittel von hydrodaten.admin.ch               |
-| `rhein_rekingen_daily.csv`  | das Ergebnis: 15 184 Tage × 3 Parameter                    |
-| `ramp.py`                   | Farbverlauf Blau→Rot in OKLCH, inkl. Kontrastprüfung        |
-| `build_site.py`             | baut `index.html` aus dem CSV                              |
-| `index.html`                | die fertige Seite, ohne Server lauffähig                   |
-| `SOURCES.md`                | Recherche zu allen geprüften Bezugsquellen                 |
-
-```sh
-python3 fetch_hydrodaten.py    # -> rhein_rekingen_daily.csv
-python3 build_site.py          # -> index.html
-python3 ramp.py                # Kontrastwerte des Farbverlaufs prüfen
-```
-
-Kein Framework, keine Abhängigkeiten — Python-Standardbibliothek und eine
-statische HTML-Datei mit eingebetteten Daten.
-
-Trifft die vollständige Reihe vom BAFU ein, genügt es, das CSV zu ersetzen und
-`build_site.py` erneut laufen zu lassen; Achsen, Farbverlauf und Legende
-skalieren mit.
-
-### Zur Farbwahl
-
-Der Verlauf läuft in OKLCH auf dem kurzen Weg über Violett von Blau nach Rot,
-nicht über einen neutralen Mittelpunkt: bei 42 überlagerten Linien würde eine
-entsättigte Mitte die Jahrgänge um 2003 im Hintergrund verschwinden lassen.
-Jede Stufe hält in beiden Themes mindestens 3:1 Kontrast zur Zeichenfläche —
-`python3 ramp.py` gibt die Werte aus.
-
-Der Farbverlauf ist am **Jahreswert** aufgehängt, nicht am Zeilenindex. Sonst
-würden die vier fehlenden Jahrgänge die Skala stauchen und die Legende falsch
-beschriften.
+Details zu allen geprüften Bezugsquellen in [`SOURCES.md`](SOURCES.md).
 
 ## Lizenz
 
