@@ -35,11 +35,11 @@ nicht dem BAFU anzulasten.
 
 ## Messreihe der Station 2143
 
-| Parameter                 | Messbeginn beim BAFU |
-| ------------------------- | -------------------- |
-| Abfluss (m³/s)            | 1904                 |
-| Wasserstand (m ü.M.)      | 1964                 |
-| Wassertemperatur (°C)     | 1969                 |
+| Parameter             | Messbeginn beim BAFU |
+| --------------------- | -------------------- |
+| Abfluss (m³/s)        | 1904                 |
+| Wasserstand (m ü.M.)  | 1964                 |
+| Wassertemperatur (°C) | 1969                 |
 
 Öffentlich als Tagesmittel abrufbar ist allerdings nur **1981 bis heute**. Damit
 deckt diese Visualisierung 42 Jahrgänge ab. Bekannte Lücken, alle quellenbedingt:
@@ -49,16 +49,6 @@ deckt diese Visualisierung 42 Jahrgänge ab. Bekannte Lücken, alle quellenbedin
   ausgelassen.
 - **29. Februar** fehlt durchgehend; die Quelle nutzt ein 365-Tage-Raster.
 - **2026** ist naturgemäss unvollständig.
-
-Die Lücken sind nicht auf einen Stationsausfall zurückzuführen: dieselben Jahre
-fehlen auch bei anderen Stationen (2289 Basel, 2091 Rheinfelden), deren Reihen
-weit länger sind.
-
-Als **Monatsmittel** reichen die öffentlichen Daten deutlich weiter zurück — beim
-Abfluss bis 1904, bei der Temperatur bis 1970, beim Wasserstand bis 1974, und
-zwar lückenlos. Die **vollständigen Tagesreihen ab 1904/1964/1969** gibt es
-kostenlos beim [Datenservice Hydrologie](https://www.bafu.admin.ch/de/datenservice-hydrologie-fuer-fliessgewaesser-und-seen)
-des BAFU (hydrologie@bafu.admin.ch).
 
 Details zu allen geprüften Bezugsquellen in [`SOURCES.md`](SOURCES.md).
 
