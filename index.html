@@ -147,7 +147,6 @@
   .card-title { font-size: 0.95rem; font-weight: 600; margin: 0; }
   .card-note { font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.45; }
   .trend-line { stroke: var(--text-primary); stroke-width: 2; fill: none; stroke-linecap: round; }
-  .trend-line.weak { opacity: 0.28; }
   .spine { stroke: var(--axis); stroke-width: 1; fill: none; opacity: 0.55; }
   .dot-year circle { stroke: var(--surface-1); stroke-width: 2; }
 
@@ -603,8 +602,9 @@
       return (k && !gap ? "L" : "M") + tx(YEARS[ix]).toFixed(1) + " " + ty(t.means[k]).toFixed(1);
     }).join(" "));
 
+    // same weight and colour in every tab; how much the fit is worth is said in
+    // the caption, not whispered through the line's opacity
     tFit.setAttribute("d", `M${tx(t.x0).toFixed(1)} ${ty(t.y0).toFixed(1)} L${tx(t.x1).toFixed(1)} ${ty(t.y1).toFixed(1)}`);
-    tFit.classList.toggle("weak", !t.strong);
 
     renderTrendDots();
     writeTrendNote();
