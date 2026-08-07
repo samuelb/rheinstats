@@ -137,11 +137,28 @@ def main():
     open("index.html", "w").write(
         '<!doctype html>\n<html lang="de">\n<head>\n<meta charset="utf-8">\n'
         '<meta name="viewport" content="width=device-width, initial-scale=1">\n'
+        f"<style>\n{STANDALONE_CSS}</style>\n"
         "</head>\n<body>\n" + body + "\n</body>\n</html>\n"
     )
     print(f"{len(years)} years -> index.html / artifact.html")
     print(note)
 
+
+# Only the standalone file needs this. The hosted-artifact wrapper supplies its
+# own reset, but a bare page keeps the UA margin on <body>, which shows up as a
+# white frame around the plane — and stays white in dark mode.
+STANDALONE_CSS = """\
+  html, body { margin: 0; padding: 0; background: #f9f9f7; }
+  html { color-scheme: light; }
+  @media (prefers-color-scheme: dark) {
+    html:not([data-theme="light"]), html:not([data-theme="light"]) body { background: #0d0d0d; }
+    html:not([data-theme="light"]) { color-scheme: dark; }
+  }
+  html[data-theme="dark"], html[data-theme="dark"] body { background: #0d0d0d; }
+  html[data-theme="dark"] { color-scheme: dark; }
+  html[data-theme="light"], html[data-theme="light"] body { background: #f9f9f7; }
+  html[data-theme="light"] { color-scheme: light; }
+"""
 
 TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstand</title>
 <style>
