@@ -28,7 +28,6 @@ EXPORT_GLOB = "measurements/*.csv"
 EXPORT_PARAMS = {"Wassertemperatur": "temperature", "Abfluss": "discharge", "Pegel": "level"}
 MIN_DAYS = 30    # a year with fewer points than this is a portal artifact, not a line
 FULL_DAYS = 360  # below this a year's mean is not comparable, so it stays out of the trend
-R2_STRONG = 0.1  # under this the fit explains so little that calling it a trend would mislead
 
 MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
 MONTHS_FULL = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
@@ -133,35 +132,21 @@ def axis_for(values, zero):
 
 
 def trend_for(years, by_year):
-    """Annual means plus a least-squares fit over them.
-
-    Only years that are essentially complete take part — a partial year's mean is
+    """Annual means of the essentially complete years — a partial year's mean is
     biased by whichever seasons it happens to contain and is not comparable.
+
+    The least-squares fit itself lives client-side, where the year range can be
+    narrowed and the fit has to follow the selection.
     """
     pts = [(i, y, by_year[y]) for i, y in enumerate(years)
            if sum(v is not None for v in by_year[y]) >= FULL_DAYS]
-    idx = [i for i, _, _ in pts]
-    yrs = [y for _, y, _ in pts]
     means = [st.fmean(v for v in vals if v is not None) for _, _, vals in pts]
-
-    slope, intercept = st.linear_regression(yrs, means)
-    r = st.correlation(yrs, means)
     domain, ticks = axis_for(means, zero=False)
-    xstep = 10 if yrs[-1] - yrs[0] > 60 else 5   # a century at 5-year ticks would crowd
 
     return {
-        "idx": idx,
+        "idx": [i for i, _, _ in pts],
         "means": [round(m, 4) for m in means],
-        "x0": yrs[0], "x1": yrs[-1],
-        "xticks": [y for y in range(math.ceil(yrs[0] / xstep) * xstep, yrs[-1] + 1, xstep)],
         "domain": domain, "ticks": ticks,
-        "y0": round(slope * yrs[0] + intercept, 4),   # fitted line endpoints
-        "y1": round(slope * yrs[-1] + intercept, 4),
-        "perDecade": round(slope * 10, 4),
-        "total": round(slope * (yrs[-1] - yrs[0]), 4),
-        "r2": round(r * r, 3),
-        "strong": r * r >= R2_STRONG,
-        "dropped": [y for y in years if y not in yrs],
     }
 
 
@@ -407,13 +392,52 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .dot-year circle { stroke: var(--surface-1); stroke-width: 2; }
 
   .legend { margin: 18px 0 4px; }
+  .legend-track { position: relative; }
   .legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
+  .legend-shade {
+    position: absolute; top: 0; height: 100%; pointer-events: none;
+    background: var(--plane); opacity: 0.82;
+  }
+  #shade-lo { left: 0; border-radius: 4px 0 0 4px; }
+  #shade-hi { right: 0; border-radius: 0 4px 4px 0; }
+  /* two stacked native sliders make the dual-thumb range; only the thumbs are
+     interactive, the shared track underneath is the gradient bar itself */
+  .legend-track input {
+    position: absolute; top: -4px; left: 0; width: 100%; height: 16px; margin: 0;
+    -webkit-appearance: none; appearance: none; background: none; pointer-events: none;
+  }
+  #range-lo { z-index: 3; }
+  #range-hi { z-index: 4; }
+  .legend-track input::-webkit-slider-thumb {
+    -webkit-appearance: none; appearance: none; pointer-events: auto;
+    width: 16px; height: 16px; border-radius: 50%;
+    background: var(--surface-1); border: 2px solid var(--text-secondary);
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: ew-resize;
+  }
+  .legend-track input::-moz-range-track { background: none; }
+  .legend-track input::-moz-range-thumb {
+    pointer-events: auto; width: 12px; height: 12px; border-radius: 50%;
+    background: var(--surface-1); border: 2px solid var(--text-secondary);
+    box-shadow: 0 1px 3px rgba(0,0,0,.25); cursor: ew-resize;
+  }
+  .legend-track input:focus-visible::-webkit-slider-thumb { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+  .legend-track input:focus-visible::-moz-range-thumb { outline: 2px solid var(--text-primary); outline-offset: 1px; }
   .legend-ticks {
     position: relative; height: 14px; margin-top: 5px;
     font-size: 0.7rem; color: var(--text-muted); font-variant-numeric: tabular-nums;
   }
   .legend-ticks span { position: absolute; transform: translateX(-50%); white-space: nowrap; }
-  .legend-cap { font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px; }
+  .legend-cap {
+    font-size: 0.75rem; color: var(--text-secondary); margin-bottom: 6px;
+    display: flex; align-items: center; gap: 8px; min-height: 20px;
+  }
+  .range-reset {
+    font: inherit; font-size: 0.72rem; color: var(--text-secondary);
+    background: transparent; border: 1px solid var(--hairline); border-radius: 6px;
+    padding: 1px 7px; cursor: pointer;
+  }
+  .range-reset:hover { color: var(--text-primary); background: var(--ghost); }
+  .range-reset:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
 
   .years { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 16px; }
   .yr {
@@ -467,8 +491,16 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     </div>
 
     <div class="legend">
-      <div class="legend-cap">Messjahr</div>
-      <div class="legend-bar" id="legend-bar"></div>
+      <div class="legend-cap">Messjahr<span id="range-label"></span>
+        <button type="button" class="range-reset" id="range-reset" hidden>Alle Jahre</button>
+      </div>
+      <div class="legend-track">
+        <div class="legend-bar" id="legend-bar"></div>
+        <div class="legend-shade" id="shade-lo"></div>
+        <div class="legend-shade" id="shade-hi"></div>
+        <input type="range" id="range-lo" step="1" aria-label="Ältestes angezeigtes Jahr">
+        <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
+      </div>
       <div class="legend-ticks" id="legend-ticks"></div>
     </div>
   </div>
@@ -644,6 +676,55 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   /* ---- state ---- */
   let selected = null, hovered = null, cursorDay = null;
 
+  /* ---- year-range slider: two thumbs on the legend bar cap the drawn years ---- */
+  let rLo = null, rHi = null;   // in years, kept across tabs; null = no cap
+  const loIn = document.getElementById("range-lo");
+  const hiIn = document.getElementById("range-hi");
+  const shadeLo = document.getElementById("shade-lo");
+  const shadeHi = document.getElementById("shade-hi");
+  const rangeLabel = document.getElementById("range-label");
+  const rangeReset = document.getElementById("range-reset");
+
+  const effLo = () => Math.max(P().y0, rLo == null ? P().y0 : rLo);
+  const effHi = () => Math.min(P().y1, rHi == null ? P().y1 : rHi);
+  const inRange = i => YEARS[i] >= effLo() && YEARS[i] <= effHi();
+  const visible = i => HAS[pi][i] && inRange(i);
+
+  function syncRange() {
+    const p = P();
+    loIn.min = hiIn.min = p.y0;
+    loIn.max = hiIn.max = p.y1;
+    loIn.value = effLo();
+    hiIn.value = effHi();
+    const f0 = (effLo() - p.y0) / (p.y1 - p.y0);
+    const f1 = (effHi() - p.y0) / (p.y1 - p.y0);
+    shadeLo.style.width = (f0 * 100) + "%";
+    shadeHi.style.width = ((1 - f1) * 100) + "%";
+    const capped = effLo() > p.y0 || effHi() < p.y1;
+    rangeLabel.textContent = capped ? ` · ${effLo()}–${effHi()}` : "";
+    rangeReset.hidden = !capped;
+    // both thumbs parked on the right edge: only the lower one can still move,
+    // so it must win the pointer over the upper input stacked above it
+    loIn.style.zIndex = effLo() === p.y1 ? 5 : "";
+    if (selected != null && !visible(selected)) selected = null;
+    if (hovered != null && !visible(hovered)) hovered = null;
+    yearBtns.forEach((b, k) => { b.hidden = !visible(k); });
+    drawTrend();   // the fit follows the selection
+    render();
+  }
+
+  loIn.addEventListener("input", () => {
+    rLo = Math.min(+loIn.value, effHi());
+    if (rLo <= P().y0) rLo = null;   // at the stop = no cap, also on longer tabs
+    syncRange();
+  });
+  hiIn.addEventListener("input", () => {
+    rHi = Math.max(+hiIn.value, effLo());
+    if (rHi >= P().y1) rHi = null;
+    syncRange();
+  });
+  rangeReset.addEventListener("click", () => { rLo = rHi = null; syncRange(); });
+
   /* ---- year legend: identity that does not rely on telling the hues apart ---- */
   const yearsBox = document.getElementById("years");
   const yearBtns = YEARS.map((yr, i) => {
@@ -678,6 +759,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     const focus = hovered != null ? hovered : selected;
     const anyFocus = focus != null || selected != null;
     paths.forEach((p, i) => {
+      p.style.display = visible(i) ? "" : "none";
       const lift = i === focus || i === selected;
       const current = !anyFocus && i === CURRENT;   // yields as soon as a year is picked
       p.style.opacity = anyFocus ? (lift ? OP_LIFT : OP_DIM) : (current ? OP_LIFT : OP_REST);
@@ -777,6 +859,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     if (day < 0 || day >= DAYS) return null;
     let best = null, bestDist = Infinity;
     for (let i = 0; i < N; i++) {
+      if (!visible(i)) continue;
       const v = SERIES()[i][day];
       if (v == null) continue;
       const dist = Math.abs(y(v) - sy);
@@ -801,9 +884,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     render();
   });
   // keyboard: the chart itself steps through years, so selection never needs a
-  // pointer; years without data for the active parameter are skipped over
+  // pointer; years outside the range or without data are skipped over
   function nextWithData(from, dir) {
-    for (let j = from; j >= 0 && j < N; j += dir) if (HAS[pi][j]) return j;
+    for (let j = from; j >= 0 && j < N; j += dir) if (visible(j)) return j;
     return null;
   }
   svg.addEventListener("keydown", ev => {
@@ -836,20 +919,45 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   const tSpine = document.getElementById("trend-spine");
   const tTip = document.getElementById("trend-tooltip");
 
-  const tx = yr => {
-    const t = P().trend;
-    return TM.left + ((yr - t.x0) / (t.x1 - t.x0)) * TPW;
-  };
+  // the x domain follows the year-range selection; the fit is recomputed over
+  // exactly the complete years in view, so line and note never show stale data
+  let tView = { x0: 0, x1: 1 };
+  let tPts = [];   // { ix, yr, m } of the complete years within the range
+
+  const tx = yr => TM.left + ((yr - tView.x0) / (tView.x1 - tView.x0)) * TPW;
   const ty = v => {
     const [lo, hi] = P().trend.domain;
     return TM.top + TPH - ((v - lo) / (hi - lo)) * TPH;
   };
 
+  const R2_STRONG = 0.1;  // under this the fit explains so little that calling it a trend would mislead
+
+  function fitOver(pts) {
+    const n = pts.length;
+    const mx = pts.reduce((s, d) => s + d.yr, 0) / n;
+    const my = pts.reduce((s, d) => s + d.m, 0) / n;
+    let sxx = 0, sxy = 0, syy = 0;
+    for (const d of pts) {
+      const dx = d.yr - mx, dy = d.m - my;
+      sxx += dx * dx; sxy += dx * dy; syy += dy * dy;
+    }
+    if (!sxx || !syy) return null;
+    const slope = sxy / sxx;
+    return { slope, intercept: my - slope * mx, r2: (sxy * sxy) / (sxx * syy) };
+  }
+
   function drawTrend() {
     const p = P(), t = p.trend;
+    tPts = [];
+    t.idx.forEach((ix, k) => {
+      if (inRange(ix)) tPts.push({ ix, yr: YEARS[ix], m: t.means[k] });
+    });
+    const yr0 = tPts.length ? tPts[0].yr : effLo();
+    const yr1 = tPts.length ? tPts[tPts.length - 1].yr : effHi();
+    tView = yr1 > yr0 ? { x0: yr0, x1: yr1 } : { x0: yr0 - 1, x1: yr0 + 1 };
+
     tGrid.textContent = "";
     tAxes.textContent = "";
-
     t.ticks.forEach(v => {
       tGrid.appendChild(el("line", { class: "grid-line", x1: TM.left, x2: TW - TM.right, y1: ty(v), y2: ty(v) }));
       const lb = el("text", { class: "tick", x: TM.left - 9, y: ty(v) + 4, "text-anchor": "end" });
@@ -858,78 +966,90 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     });
     const base = TM.top + TPH;
     tAxes.appendChild(el("line", { class: "axis-line", x1: TM.left, x2: TW - TM.right, y1: base, y2: base }));
-    t.xticks.forEach(yr => {
+    const span = tView.x1 - tView.x0;
+    const xstep = span > 60 ? 10 : span > 25 ? 5 : span > 12 ? 2 : 1;
+    for (let yr = Math.ceil(tView.x0 / xstep) * xstep; yr <= tView.x1; yr += xstep) {
       const lb = el("text", { class: "tick", x: tx(yr), y: base + 18, "text-anchor": "middle" });
       lb.textContent = yr;
       tAxes.appendChild(lb);
-    });
+    }
     const unit = el("text", { class: "axis-title", x: TM.left - 9, y: TM.top - 12, "text-anchor": "end" });
     unit.textContent = p.unit;
     tAxes.appendChild(unit);
 
     // the year-to-year line stays recessive; it is context for the fit, not the point
     // break the line across missing years rather than implying a measurement
-    tSpine.setAttribute("d", t.idx.map((ix, k) => {
-      const gap = k > 0 && YEARS[ix] - YEARS[t.idx[k - 1]] > 1;
-      return (k && !gap ? "L" : "M") + tx(YEARS[ix]).toFixed(1) + " " + ty(t.means[k]).toFixed(1);
+    tSpine.setAttribute("d", tPts.map((d, k) => {
+      const gap = k > 0 && d.yr - tPts[k - 1].yr > 1;
+      return (k && !gap ? "L" : "M") + tx(d.yr).toFixed(1) + " " + ty(d.m).toFixed(1);
     }).join(" "));
 
     // same weight and colour in every tab; how much the fit is worth is said in
     // the caption, not whispered through the line's opacity
-    tFit.setAttribute("d", `M${tx(t.x0).toFixed(1)} ${ty(t.y0).toFixed(1)} L${tx(t.x1).toFixed(1)} ${ty(t.y1).toFixed(1)}`);
+    const fit = tPts.length >= 3 ? fitOver(tPts) : null;
+    tFit.style.display = fit ? "" : "none";
+    if (fit) {
+      tFit.setAttribute("d",
+        `M${tx(yr0).toFixed(1)} ${ty(fit.slope * yr0 + fit.intercept).toFixed(1)} ` +
+        `L${tx(yr1).toFixed(1)} ${ty(fit.slope * yr1 + fit.intercept).toFixed(1)}`);
+    }
 
     renderTrendDots();
-    writeTrendNote();
+    writeTrendNote(fit, yr0, yr1);
   }
 
   function renderTrendDots() {
-    const t = P().trend;
     tDots.textContent = "";
-    t.idx.forEach((ix, k) => {
-      const lift = ix === selected || ix === hovered;
+    tPts.forEach(d => {
+      const lift = d.ix === selected || d.ix === hovered;
       const g = el("g", { class: "dot-year" });
       g.appendChild(el("circle", {
-        cx: tx(YEARS[ix]), cy: ty(t.means[k]), r: lift ? 6 : 4,
-        fill: colors[ix], opacity: (selected != null || hovered != null) && !lift ? 0.35 : 1,
+        cx: tx(d.yr), cy: ty(d.m), r: lift ? 6 : 4,
+        fill: colors[d.ix], opacity: (selected != null || hovered != null) && !lift ? 0.35 : 1,
       }));
       tDots.appendChild(g);
     });
   }
 
-  function writeTrendNote() {
-    const p = P(), t = p.trend;
+  function writeTrendNote(fit, x0, x1) {
+    const p = P();
     const note = document.getElementById("trend-note");
-    const sign = t.perDecade > 0 ? "+" : "−";
-    const dec = p.rateNf.format(Math.abs(t.perDecade));
-    const tot = p.rateNf.format(Math.abs(t.total));
-    const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(t.r2);
+    if (!fit) {
+      note.textContent = "Ein Punkt je Jahrgang. Für einen Trend liegen im Bereich "
+        + `${effLo()}–${effHi()} zu wenige vollständige Jahrgänge.`;
+      return;
+    }
+    const perDecade = fit.slope * 10;
+    const sign = perDecade > 0 ? "+" : "−";
+    const dec = p.rateNf.format(Math.abs(perDecade));
+    const tot = p.rateNf.format(Math.abs(fit.slope * (x1 - x0)));
+    const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(fit.r2);
 
-    note.textContent = t.strong
+    note.textContent = fit.r2 >= R2_STRONG
       ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec} ${p.unit} pro Jahrzehnt, `
-        + `über ${t.x1 - t.x0} Jahre ${sign}${tot} ${p.unit} (r² = ${r2}). `
-        + `Nur vollständige Jahrgänge, ${t.x0}–${t.x1}; die Achse ist auf die Jahresmittel gezoomt.`
+        + `über ${x1 - x0} Jahre ${sign}${tot} ${p.unit} (r² = ${r2}). `
+        + `Nur vollständige Jahrgänge, ${x0}–${x1}; die Achse ist auf die Jahresmittel gezoomt.`
       : `Ein Punkt je Jahrgang. Kein erkennbarer Trend — die Ausgleichsgerade erklärt nur `
         + `r² = ${r2} der Schwankung, die Unterschiede zwischen den Jahren überwiegen deutlich `
         + `(rechnerisch ${sign}${dec} ${p.unit} pro Jahrzehnt). `
-        + `Nur vollständige Jahrgänge, ${t.x0}–${t.x1}; die Achse ist auf die Jahresmittel gezoomt.`;
+        + `Nur vollständige Jahrgänge, ${x0}–${x1}; die Achse ist auf die Jahresmittel gezoomt.`;
   }
 
   /* nearest year wins, so the pointer never has to hit a 8px dot dead-centre */
   function nearestYear(ev) {
-    const t = P().trend;
     const box = tSvg.getBoundingClientRect();
     const sx = ((ev.clientX - box.left) / box.width) * TW;
     let best = null, bestD = Infinity;
-    t.idx.forEach((ix, k) => {
-      const d = Math.abs(tx(YEARS[ix]) - sx);
-      if (d < bestD) { bestD = d; best = { ix, k }; }
+    tPts.forEach(d => {
+      const dd = Math.abs(tx(d.yr) - sx);
+      if (dd < bestD) { bestD = dd; best = d; }
     });
     return bestD < 24 ? best : null;
   }
 
   tSvg.addEventListener("pointermove", ev => {
     const hit = nearestYear(ev);
-    const p = P(), t = p.trend;
+    const p = P();
     if (!hit) { tTip.style.opacity = 0; hovered = null; render(); return; }
     hovered = hit.ix;
 
@@ -945,16 +1065,16 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     key.style.background = colors[hit.ix];
     const val = document.createElement("span");
     val.className = "tt-val";
-    val.textContent = p.nf.format(t.means[hit.k]) + " " + p.unit;
+    val.textContent = p.nf.format(hit.m) + " " + p.unit;
     const lab = document.createElement("span");
     lab.className = "tt-lab";
-    lab.textContent = YEARS[hit.ix];
+    lab.textContent = hit.yr;
     row.append(key, val, lab);
     tTip.appendChild(row);
 
     tTip.style.opacity = 1;
     const box = tSvg.getBoundingClientRect();
-    const px = (tx(YEARS[hit.ix]) / TW) * box.width;
+    const px = (tx(hit.yr) / TW) * box.width;
     const flip = px > box.width - tTip.offsetWidth - 24;
     tTip.style.left = (flip ? px - tTip.offsetWidth - 14 : px + 14) + "px";
     tTip.style.top = "6px";
@@ -999,20 +1119,15 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       b.setAttribute("aria-selected", String(k === i));
       b.tabIndex = k === i ? 0 : -1;
     });
-    // only offer years this parameter was measured in; a selection that just
-    // lost its data would otherwise dim everything with nothing lifted
-    yearBtns.forEach((b, k) => { b.hidden = !HAS[i][k]; });
-    if (selected != null && !HAS[i][selected]) selected = null;
-    if (hovered != null && !HAS[i][hovered]) hovered = null;
     panel.setAttribute("aria-labelledby", tabs[i].id);
     svg.setAttribute("aria-label",
       "Tagesmittel " + P().label + " des Rheins bei Rekingen in " + P().unit +
       ", ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.");
     drawAxes();
     drawPaths();
-    drawTrend();
     drawLegendTicks();
-    paint();   // colors are per parameter; ends in render()
+    paint();       // colors are per parameter; ends in render()
+    syncRange();   // year buttons, trend fit and visibility follow the range
   }
 
   crosshair.setAttribute("y1", M.top);
