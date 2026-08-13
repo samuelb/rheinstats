@@ -22,6 +22,8 @@ FULL_DAYS = 360  # below this a year's mean is not comparable, so it stays out o
 R2_STRONG = 0.1  # under this the fit explains so little that calling it a trend would mislead
 
 MONTHS = ["Jan", "Feb", "Mär", "Apr", "Mai", "Jun", "Jul", "Aug", "Sep", "Okt", "Nov", "Dez"]
+MONTHS_FULL = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
+               "August", "September", "Oktober", "November", "Dezember"]
 MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 # column, tab label, unit, decimals shown, encoding scale/offset, zero baseline?
@@ -38,10 +40,14 @@ PARAMS = [
 
 
 def load():
-    """-> (years, {param key: {year: [365 values]}}, missing years) on a non-leap grid."""
+    """-> (years, {param key: {year: [365 values]}}, missing years, newest date)
+    on a non-leap grid."""
     data = {p["key"]: defaultdict(lambda: [None] * 365) for p in PARAMS}
+    latest = None
     for row in csv.DictReader(open(CSV_IN)):
         date = dt.date.fromisoformat(row["date"])
+        if any(row[p["col"]] for p in PARAMS) and (latest is None or date > latest):
+            latest = date
         if (date.month, date.day) == (2, 29):
             continue  # not on the grid; the source omits it anyway
         index = sum(MONTH_LENGTHS[: date.month - 1]) + date.day - 1
@@ -53,7 +59,7 @@ def load():
     years = [y for y in sorted(counts) if sum(v is not None for v in counts[y]) >= MIN_DAYS]
     # everything the source skipped, plus years too sparse to draw as a line
     missing = [y for y in range(years[0], years[-1] + 1) if y not in years]
-    return years, data, missing
+    return years, data, missing, latest
 
 
 def encode(values, scale, offset):
@@ -122,8 +128,12 @@ def trend_for(years, by_year):
     }
 
 
+def german_date(d):
+    return f"{d.day}. {MONTHS_FULL[d.month - 1]} {d.year}"
+
+
 def main():
-    years, data, missing = load()
+    years, data, missing, latest = load()
     span = years[-1] - years[0]
     positions = [(y - years[0]) / span for y in years]
 
@@ -165,8 +175,16 @@ def main():
         "Der 29. Februar fehlt quellenbedingt."
     )
 
-    body = TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False)).replace(
-        "__NOTE__", note
+    built = dt.datetime.now()
+    stamp = (
+        f"Neueste Messwerte vom {german_date(latest)} · "
+        f"Seite erstellt am {german_date(built)} um {built:%H:%M} Uhr"
+    )
+
+    body = (
+        TEMPLATE.replace("__DATA__", json.dumps(payload, ensure_ascii=False))
+        .replace("__NOTE__", note)
+        .replace("__STAMP__", stamp)
     )
 
     open("artifact.html", "w").write(body)
@@ -352,6 +370,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .yr-key { width: 10px; height: 3px; border-radius: 2px; flex: none; }
   .note { font-size: 0.75rem; color: var(--text-muted); margin-top: 22px; line-height: 1.6; }
   .note a { color: inherit; }
+  .stamp { margin-top: 8px; }
 </style>
 
 <div class="viz-root">
@@ -417,6 +436,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     Jahresganglinien von hydrodaten.admin.ch. Der Wasserstand ist eine Höhe über
     Meer, seine Achse beginnt daher nicht bei null. __NOTE__
   </p>
+  <footer class="note stamp">__STAMP__</footer>
 </div>
 </div>
 
