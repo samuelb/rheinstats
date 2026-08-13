@@ -1,6 +1,11 @@
 #!/usr/bin/env python3
 """Fetch daily means (Tagesmittel) for a BAFU hydro station from hydrodaten.admin.ch.
 
+This is the *complementary* source: the primary data are the full-series CSV
+exports of the BAFU Datenservice Hydrologie in measurements/. build_site.py
+takes the CSV written here only for days the export does not cover — run this
+to pick up the days since the export date, until a fresh export replaces them.
+
 The public station pages render their "Jahresganglinie" with Plotly. The JSON
 behind those plots contains the full daily-mean series for the selected year, at
 higher precision than the published Jahrestabellen PDFs.

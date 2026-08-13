@@ -1,5 +1,10 @@
 #!/usr/bin/env python3
-"""Build the Rekingen spaghetti charts from rhein_rekingen_daily.csv.
+"""Build the Rekingen spaghetti charts.
+
+Primary source are the full-series CSV exports of the BAFU Datenservice
+Hydrologie in measurements/ (Abfluss ab 1904, Pegel ab 1964, Wassertemperatur
+ab 1969). The hydrodaten.admin.ch cache rhein_rekingen_daily.csv only fills
+days the export does not cover — in practice the days since the export date.
 
 One chart per measured parameter, switched by tabs — never two scales on one
 plot. Writes two files from one template:
@@ -9,6 +14,7 @@ plot. Writes two files from one template:
 
 import csv
 import datetime as dt
+import glob
 import json
 import math
 import statistics as st
@@ -16,7 +22,10 @@ from collections import defaultdict
 
 import ramp
 
-CSV_IN = "rhein_rekingen_daily.csv"
+CSV_API = "rhein_rekingen_daily.csv"
+EXPORT_GLOB = "measurements/*.csv"
+# Parameter name in the export -> our param key
+EXPORT_PARAMS = {"Wassertemperatur": "temperature", "Abfluss": "discharge", "Pegel": "level"}
 MIN_DAYS = 30    # a year with fewer points than this is a portal artifact, not a line
 FULL_DAYS = 360  # below this a year's mean is not comparable, so it stays out of the trend
 R2_STRONG = 0.1  # under this the fit explains so little that calling it a trend would mislead
@@ -41,23 +50,50 @@ PARAMS = [
 
 def load():
     """-> (years, {param key: {year: [365 values]}}, missing years, newest date)
-    on a non-leap grid."""
+    on a non-leap grid.
+
+    The Datenservice export is written first and wins; the API cache may only
+    fill days the export leaves empty, so a value never silently changes source.
+    """
     data = {p["key"]: defaultdict(lambda: [None] * 365) for p in PARAMS}
     latest = None
-    for row in csv.DictReader(open(CSV_IN)):
-        date = dt.date.fromisoformat(row["date"])
-        if any(row[p["col"]] for p in PARAMS) and (latest is None or date > latest):
+
+    def put(key, date, value):
+        nonlocal latest
+        if latest is None or date > latest:
             latest = date
         if (date.month, date.day) == (2, 29):
-            continue  # not on the grid; the source omits it anyway
+            return  # the 365-day grid has no slot for it
         index = sum(MONTH_LENGTHS[: date.month - 1]) + date.day - 1
+        if data[key][date.year][index] is None:
+            data[key][date.year][index] = value
+
+    for path in sorted(glob.glob(EXPORT_GLOB)):
+        with open(path, encoding="cp1252") as fh:
+            lines = fh.read().splitlines()
+        head = next(i for i, l in enumerate(lines) if l.startswith("Stationsname;"))
+        for row in csv.DictReader(lines[head:], delimiter=";"):
+            key = EXPORT_PARAMS.get(row["Parameter"])
+            if key is None or row["Zeitreihe"] != "Tagesmittel":
+                continue
+            try:
+                value = float(row["Wert"])
+            except ValueError:
+                continue  # gaps are spelled "Lücke"
+            put(key, dt.date.fromisoformat(row["Zeitstempel"][:10]), value)
+
+    for row in csv.DictReader(open(CSV_API)):
+        date = dt.date.fromisoformat(row["date"])
         for p in PARAMS:
             if row[p["col"]]:
-                data[p["key"]][date.year][index] = float(row[p["col"]])
+                put(p["key"], date, float(row[p["col"]]))
 
-    counts = data[PARAMS[0]["key"]]
-    years = [y for y in sorted(counts) if sum(v is not None for v in counts[y]) >= MIN_DAYS]
-    # everything the source skipped, plus years too sparse to draw as a line
+    def days(key, year):
+        return sum(v is not None for v in data[key].get(year, ()))
+
+    # a year is drawn if any parameter has enough of it for a line
+    all_years = sorted({y for k in data for y in data[k]})
+    years = [y for y in all_years if any(days(k, y) >= MIN_DAYS for k in data)]
     missing = [y for y in range(years[0], years[-1] + 1) if y not in years]
     return years, data, missing, latest
 
@@ -111,12 +147,13 @@ def trend_for(years, by_year):
     slope, intercept = st.linear_regression(yrs, means)
     r = st.correlation(yrs, means)
     domain, ticks = axis_for(means, zero=False)
+    xstep = 10 if yrs[-1] - yrs[0] > 60 else 5   # a century at 5-year ticks would crowd
 
     return {
         "idx": idx,
         "means": [round(m, 4) for m in means],
         "x0": yrs[0], "x1": yrs[-1],
-        "xticks": [y for y in range(math.ceil(yrs[0] / 5) * 5, yrs[-1] + 1, 5)],
+        "xticks": [y for y in range(math.ceil(yrs[0] / xstep) * xstep, yrs[-1] + 1, xstep)],
         "domain": domain, "ticks": ticks,
         "y0": round(slope * yrs[0] + intercept, 4),   # fitted line endpoints
         "y1": round(slope * yrs[-1] + intercept, 4),
@@ -154,6 +191,13 @@ def main():
             "trend": trend_for(years, by_year),
         })
 
+    # legend ticks on the year scale; endpoints always, decades in between
+    step = 20 if span > 80 else 10
+    legend_years = [years[0]] + [
+        y for y in range(math.ceil(years[0] / step) * step, years[-1] + 1, step)
+        if 0.03 < (y - years[0]) / span < 0.97   # keep clear of the endpoint labels
+    ] + [years[-1]]
+
     payload = {
         "years": years,
         "params": params,
@@ -161,18 +205,28 @@ def main():
         "dark": ramp.ramp(positions, "dark"),
         "legendLight": ramp.ramp(stops, "light"),
         "legendDark": ramp.ramp(stops, "dark"),
+        "legendYears": legend_years,
         "months": MONTHS,
         "monthLengths": MONTH_LENGTHS,
     }
 
-    counts = data[PARAMS[0]["key"]]
-    partial = [y for y in years if sum(v is not None for v in counts[y]) < 360]
+    def days(key, year):
+        return sum(v is not None for v in data[key].get(year, ()))
+
+    # a year counts as partial only if no parameter has it complete
+    partial = [y for y in years if max(days(p["key"], y) for p in PARAMS) < FULL_DAYS]
+    coverage = ", ".join(
+        f"{p['label']} ab {min(y for y in years if days(p['key'], y))}" for p in PARAMS
+    )
+    gaps = (
+        f"Nicht abgedeckt: {', '.join(str(y) for y in missing)}. " if missing else ""
+    )
     note = (
-        f"{len(years)} Jahrgänge, {years[0]}–{years[-1]}. "
-        f"Nicht abgedeckt: {', '.join(str(y) for y in missing)} — "
-        "auf hydrodaten.admin.ch nicht abrufbar. "
+        f"{len(years)} Jahrgänge, {years[0]}–{years[-1]} — {coverage}; "
+        "die Jahresliste führt je Messgrösse nur Jahre mit Messwerten. "
+        f"{gaps}"
         f"{', '.join(str(y) for y in partial)} unvollständig. "
-        "Der 29. Februar fehlt quellenbedingt."
+        "Der 29. Februar liegt ausserhalb des 365-Tage-Rasters der Darstellung."
     )
 
     built = dt.datetime.now()
@@ -364,6 +418,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     padding: 3px 6px 3px 5px; cursor: pointer;
     display: inline-flex; align-items: center; gap: 5px;
   }
+  .yr[hidden] { display: none; }   /* inline-flex would beat the UA hidden rule */
   .yr:hover { background: var(--ghost); }
   .yr:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 2px; }
   .yr[aria-pressed="true"] { color: var(--text-primary); font-weight: 600; border-color: var(--axis); }
@@ -432,7 +487,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
   <p class="note">
     Quelle: Bundesamt für Umwelt BAFU, Station 2143 Rhein–Rekingen, Tagesmittel
-    von Wassertemperatur, Abfluss und Wasserstand, abgerufen über die
+    von Wassertemperatur, Abfluss und Wasserstand. Vollständige Messreihen vom
+    Datenservice Hydrologie des BAFU, ergänzt um die jüngsten Tage aus den
     Jahresganglinien von hydrodaten.admin.ch. Der Wasserstand ist eine Höhe über
     Meer, seine Achse beginnt daher nicht bei null. __NOTE__
   </p>
@@ -466,6 +522,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   let pi = 0;                       // active parameter
   const P = () => PARAMS[pi];
   const SERIES = () => P().values;
+  // the parameters start in different decades, so year availability is per tab
+  const HAS = PARAMS.map(p => p.values.map(vals => vals.some(v => v != null)));
 
   const W = 960, H = 470;
   const M = { top: 28, right: 16, bottom: 54, left: 62 };   // top leaves room for the unit label
@@ -564,7 +622,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   /* ---- legend ticks, placed at their true position on the year scale ---- */
   const Y0 = YEARS[0], Y1 = YEARS[N - 1], SPAN = Y1 - Y0;
   const ticks = document.getElementById("legend-ticks");
-  [Y0, 1990, 2000, 2010, 2020, Y1].forEach(yr => {
+  D.legendYears.forEach(yr => {
     const s = document.createElement("span");
     s.textContent = yr;
     const f = (yr - Y0) / SPAN;
@@ -733,17 +791,23 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     else selected = null;
     render();
   });
-  // keyboard: the chart itself steps through years, so selection never needs a pointer
+  // keyboard: the chart itself steps through years, so selection never needs a
+  // pointer; years without data for the active parameter are skipped over
+  function nextWithData(from, dir) {
+    for (let j = from; j >= 0 && j < N; j += dir) if (HAS[pi][j]) return j;
+    return null;
+  }
   svg.addEventListener("keydown", ev => {
     const step = { ArrowRight: 1, ArrowUp: 1, ArrowLeft: -1, ArrowDown: -1 }[ev.key];
     if (step) {
-      selected = selected == null ? (step > 0 ? 0 : N - 1)
-                                  : Math.min(N - 1, Math.max(0, selected + step));
+      const next = selected == null ? nextWithData(step > 0 ? 0 : N - 1, step)
+                                    : nextWithData(selected + step, step);
+      if (next != null) selected = next;
       if (cursorDay == null) cursorDay = 195;   // mid-July, where the years spread widest
       ev.preventDefault();
       render();
-    } else if (ev.key === "Home") { selected = 0; ev.preventDefault(); render(); }
-    else if (ev.key === "End") { selected = N - 1; ev.preventDefault(); render(); }
+    } else if (ev.key === "Home") { selected = nextWithData(0, 1); ev.preventDefault(); render(); }
+    else if (ev.key === "End") { selected = nextWithData(N - 1, -1); ev.preventDefault(); render(); }
   });
   document.addEventListener("keydown", ev => {
     if (ev.key === "Escape") { selected = null; cursorDay = null; render(); }
@@ -926,6 +990,11 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       b.setAttribute("aria-selected", String(k === i));
       b.tabIndex = k === i ? 0 : -1;
     });
+    // only offer years this parameter was measured in; a selection that just
+    // lost its data would otherwise dim everything with nothing lifted
+    yearBtns.forEach((b, k) => { b.hidden = !HAS[i][k]; });
+    if (selected != null && !HAS[i][selected]) selected = null;
+    if (hovered != null && !HAS[i][hovered]) hovered = null;
     panel.setAttribute("aria-labelledby", tabs[i].id);
     svg.setAttribute("aria-label",
       "Tagesmittel " + P().label + " des Rheins bei Rekingen in " + P().unit +

@@ -13,6 +13,10 @@ Record start according to BAFU:
 
 ## 1. Datenservice Hydrologie — the full record (recommended)
 
+**Delivered August 2026** — the full-series CSVs (plus conductivity, pH and
+oxygen since 1976) live in `measurements/` and are the primary source of this
+repo; source 2 below only complements the days since the export date.
+
 Free since 2020-01-01. Daily means/maxima/minima plus continuous data (5 min /
 10 min / hourly, available from 1974). This is the only way to get the whole
 series back to 1904/1964/1969.

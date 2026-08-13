@@ -1,8 +1,9 @@
 # Der Rhein bei Rekingen
 
 Wie sich Wassertemperatur, Abfluss und Wasserstand des Rheins über die Jahre
-verändert haben — 42 Jahrgänge Tagesmittel, jeder als eigener Linienzug über den
-Jahresverlauf gelegt, eingefärbt von Blau (älteste) nach Rot (jüngste Messung).
+verändert haben — bis zu 123 Jahrgänge Tagesmittel, jeder als eigener Linienzug
+über den Jahresverlauf gelegt, eingefärbt von Blau (älteste) nach Rot (jüngste
+Messung).
 
 **→ [Zur Visualisierung](https://samuelb.github.io/rheinstats/)**
 
@@ -41,19 +42,29 @@ nicht dem BAFU anzulasten.
 | Wasserstand (m ü.M.)  | 1964                 |
 | Wassertemperatur (°C) | 1969                 |
 
-Öffentlich als Tagesmittel abrufbar ist allerdings nur **1981 bis heute**. Damit
-deckt diese Visualisierung 42 Jahrgänge ab. Bekannte Lücken, alle quellenbedingt:
+### Primäre Quelle: Datenservice Hydrologie (`measurements/`)
 
-- **1983, 1985, 1986** liefert das Portal für keinen Parameter Tagesdaten.
-- **1988** liefert nur den 1. Januar — zu wenig für einen Linienzug, deshalb hier
-  ausgelassen.
-- **29. Februar** fehlt durchgehend; die Quelle nutzt ein 365-Tage-Raster.
+Die vollständigen Messreihen liegen seit August 2026 als CSV-Export des
+Datenservice Hydrologie des BAFU vor, im Ordner [`measurements/`](measurements/).
+Sie decken alle drei Parameter lückenlos vom jeweiligen Messbeginn bis zum
+Exportdatum (12. August 2026) ab — zusammen 123 Jahrgänge, 1904–2026. Der
+Export enthält zusätzlich elektrische Leitfähigkeit, pH-Wert, Sauerstoffgehalt
+und Sauerstoff-Sättigung (ab 1976, mit Lücken); diese werden derzeit noch nicht
+dargestellt.
+
+### Ergänzende Quelle: hydrodaten.admin.ch
+
+`fetch_hydrodaten.py` holt die Tagesmittel hinter den Jahresganglinien von
+hydrodaten.admin.ch nach `rhein_rekingen_daily.csv`. Seit der Export vorliegt,
+verwendet `build_site.py` diese Daten nur noch ergänzend — für Tage, die der
+Export nicht abdeckt, also für die jüngsten Messwerte seit dem Exportdatum.
+Im Überlappungsbereich stimmen beide Quellen überein (geprüft: maximale
+Abweichung 0.02 am noch provisorischen letzten Tag).
+
+Verbleibende Lücken der Darstellung:
+
+- **29. Februar** wird nicht gezeigt; die Grafik nutzt ein 365-Tage-Raster.
 - **2026** ist naturgemäss unvollständig.
-
-Die vollständigen Messreihen ab 1904, 1964 beziehungsweise 1969 sind beim
-Datenservice Hydrologie des BAFU angefragt. Sobald sie vorliegen und
-veröffentlicht werden dürfen, fliessen sie hier ein — die Darstellung deckt dann
-statt vier Jahrzehnten das ganze letzte Jahrhundert ab.
 
 Details zu allen geprüften Bezugsquellen in [`SOURCES.md`](SOURCES.md).
 
