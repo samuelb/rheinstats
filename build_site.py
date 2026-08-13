@@ -414,6 +414,29 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .card-title { font-size: 0.95rem; font-weight: 600; margin: 0; }
   .card-note { font-size: 0.78rem; color: var(--text-secondary); margin: 0 0 10px; line-height: 1.45; }
   .trend-line { stroke: var(--text-primary); stroke-width: 2; fill: none; stroke-linecap: round; }
+  .trend-linear { stroke-dasharray: 8 5; }
+  .trend-roll { stroke-dasharray: 0.1 6.5; }
+  /* the trend selector: one fit at a time, picked like a tab */
+  .trend-keys {
+    display: inline-flex; flex-wrap: wrap; gap: 2px; margin-left: auto;
+    padding: 2px; background: var(--ghost); border-radius: 8px;
+  }
+  .trend-key {
+    font: inherit; font-size: 0.75rem; color: var(--text-secondary);
+    display: inline-flex; align-items: center; gap: 6px; white-space: nowrap;
+    background: transparent; border: 0; border-radius: 6px; padding: 4px 9px; cursor: pointer;
+  }
+  .trend-key:hover:not(:disabled) { color: var(--text-primary); }
+  .trend-key[aria-pressed="true"] {
+    background: var(--surface-1); color: var(--text-primary); font-weight: 600;
+    box-shadow: 0 1px 3px rgba(0,0,0,.10);
+  }
+  .trend-key:disabled { opacity: 0.45; cursor: default; }
+  .trend-key:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+  /* the page-wide svg rule stretches to 100% width — the key samples must not;
+     the sample wears the button's ink, not the chart line's */
+  .trend-key svg { flex: none; width: 26px; height: 6px; }
+  .trend-key .trend-line { stroke: currentColor; }
   .spine { stroke: var(--axis); stroke-width: 1; fill: none; opacity: 0.55; }
   .dot-year circle { stroke: var(--surface-1); stroke-width: 2; }
 
@@ -532,13 +555,28 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   </div>
 
   <div class="card">
-    <div class="card-head"><h2 class="card-title" id="trend-title">Jahresmittel im Vergleich</h2></div>
+    <div class="card-head">
+      <h2 class="card-title" id="trend-title">Jahresmittel im Vergleich</h2>
+      <div class="trend-keys" role="group" aria-label="Trendlinie wählen">
+        <button type="button" class="trend-key" id="key-loess" aria-pressed="true">
+          <svg width="26" height="6" viewBox="0 0 26 6" aria-hidden="true"><line class="trend-line" x1="1" y1="3" x2="25" y2="3"></line></svg>
+          LOESS-Glättung</button>
+        <button type="button" class="trend-key" id="key-linear" aria-pressed="false">
+          <svg width="26" height="6" viewBox="0 0 26 6" aria-hidden="true"><line class="trend-line trend-linear" x1="1" y1="3" x2="25" y2="3"></line></svg>
+          Lineare Regression</button>
+        <button type="button" class="trend-key" id="key-roll" aria-pressed="false">
+          <svg width="26" height="6" viewBox="0 0 26 6" aria-hidden="true"><line class="trend-line trend-roll" x1="1" y1="3" x2="25" y2="3"></line></svg>
+          <span id="key-roll-label">Gleitendes Mittel</span></button>
+      </div>
+    </div>
     <p class="card-note" id="trend-note"></p>
     <div class="plot" id="trend-plot">
-      <svg id="trend" viewBox="0 0 960 250" role="img" aria-label="Jahresmittel je Jahrgang mit linearem Trend">
+      <svg id="trend" viewBox="0 0 960 250" role="img" aria-label="Jahresmittel je Jahrgang mit wählbarer Trendlinie: LOESS-Glättung, lineare Regression oder gleitendes Mittel">
         <g id="trend-grid"></g>
         <path id="trend-spine" class="spine"></path>
-        <path id="trend-fit" class="trend-line"></path>
+        <path id="trend-fit" class="trend-line trend-linear"></path>
+        <path id="trend-roll" class="trend-line trend-roll"></path>
+        <path id="trend-loess" class="trend-line"></path>
         <g id="trend-dots"></g>
         <g id="trend-axes"></g>
       </svg>
@@ -953,7 +991,22 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   const tAxes = document.getElementById("trend-axes");
   const tDots = document.getElementById("trend-dots");
   const tFit = document.getElementById("trend-fit");
+  const tLoess = document.getElementById("trend-loess");
+  const tRoll = document.getElementById("trend-roll");
+  const keyLinear = document.getElementById("key-linear");
+  const keyLoess = document.getElementById("key-loess");
+  const keyRoll = document.getElementById("key-roll");
+  const keyRollLabel = document.getElementById("key-roll-label");
   const tSpine = document.getElementById("trend-spine");
+
+  // which fit is drawn — one at a time, LOESS by default
+  let trendMode = "loess";
+  const modeBtns = { loess: keyLoess, linear: keyLinear, roll: keyRoll };
+  for (const [m, b] of Object.entries(modeBtns)) {
+    b.addEventListener("click", () => {
+      if (trendMode !== m) { trendMode = m; drawTrend(); }
+    });
+  }
   const tTip = document.getElementById("trend-tooltip");
 
   // the x domain follows the year-range selection; the fit is recomputed over
@@ -983,6 +1036,54 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     const slope = sxy / sxx;
     return { slope, intercept: my - slope * mx, r2: (sxy * sxy) / (sxx * syy) };
   }
+
+  const LOESS_MIN = 7;   // fewer years than this and a local fit is just noise
+
+  // LOESS: a tricube-weighted linear regression around each complete year,
+  // each local fit seeing the nearest half of the years in view
+  function loessOver(pts) {
+    const n = pts.length;
+    const k = Math.min(n, Math.max(LOESS_MIN, Math.ceil(n / 2)));
+    return pts.map(d => {
+      const dist = pts.map(q => Math.abs(q.yr - d.yr)).sort((a, b) => a - b);
+      const h = dist[k - 1];
+      let sw = 0, swx = 0, swy = 0, swxx = 0, swxy = 0;
+      for (const q of pts) {
+        const u = Math.abs(q.yr - d.yr) / h;
+        if (u >= 1) continue;
+        const w = (1 - u ** 3) ** 3;
+        sw += w; swx += w * q.yr; swy += w * q.m;
+        swxx += w * q.yr * q.yr; swxy += w * q.yr * q.m;
+      }
+      const det = sw * swxx - swx * swx;
+      const v = Math.abs(det) > 1e-9
+        ? (swy * swxx - swx * swxy + (sw * swxy - swx * swy) * d.yr) / det
+        : swy / sw;
+      return { yr: d.yr, v };
+    });
+  }
+
+  // centered mean over a fixed window of years, drawn only where the whole
+  // window lies inside the selection — the ends carry no half-window bias
+  function rollingOver(pts, win) {
+    const half = (win - 1) / 2;
+    const y0 = pts[0].yr, y1 = pts[pts.length - 1].yr;
+    const out = [];
+    for (const d of pts) {
+      if (d.yr - half < y0 || d.yr + half > y1) continue;
+      const w = pts.filter(q => Math.abs(q.yr - d.yr) <= half);
+      if (w.length <= half) continue;   // a mostly-missing window would fake a value
+      out.push({ yr: d.yr, v: w.reduce((s, q) => s + q.m, 0) / w.length });
+    }
+    return out;
+  }
+
+  // polyline through smoothed points; a hole in the record wider than maxGap
+  // breaks the line rather than bridging unmeasured years
+  const smoothPath = (pts, maxGap) => pts.map((d, k) => {
+    const gap = k > 0 && d.yr - pts[k - 1].yr > maxGap;
+    return (k && !gap ? "L" : "M") + tx(d.yr).toFixed(1) + " " + ty(d.v).toFixed(1);
+  }).join(" ");
 
   function drawTrend() {
     const p = P(), t = p.trend;
@@ -1031,8 +1132,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     // same weight and colour in every tab; how much the fit is worth is said in
     // the caption, not whispered through the line's opacity
     // the fitted line spans only the complete years it is computed from
+    // all three fits are computed over the same complete years; the selector
+    // decides which one is drawn — the others keep their buttons ready
     const fit = tPts.length >= 3 ? fitOver(tPts) : null;
-    tFit.style.display = fit ? "" : "none";
     if (fit) {
       const fx0 = tPts[0].yr, fx1 = tPts[tPts.length - 1].yr;
       tFit.setAttribute("d",
@@ -1040,8 +1142,29 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
         `L${tx(fx1).toFixed(1)} ${ty(fit.slope * fx1 + fit.intercept).toFixed(1)}`);
     }
 
+    const loess = tPts.length >= LOESS_MIN ? loessOver(tPts) : null;
+    if (loess) tLoess.setAttribute("d", smoothPath(loess, 8));
+
+    // the window adapts once: 11 years on a long view, 5 on a zoomed-in one
+    const win = tPts.length && tPts[tPts.length - 1].yr - tPts[0].yr >= 30 ? 11 : 5;
+    let roll = tPts.length ? rollingOver(tPts, win) : [];
+    if (roll.length < 2) roll = null;
+    if (roll) tRoll.setAttribute("d", smoothPath(roll, win));
+    keyRollLabel.textContent = `Gleitendes Mittel (${win} Jahre)`;
+
+    tFit.style.display = fit && trendMode === "linear" ? "" : "none";
+    tLoess.style.display = loess && trendMode === "loess" ? "" : "none";
+    tRoll.style.display = roll && trendMode === "roll" ? "" : "none";
+    // a fit the selection cannot support stays listed but not pressable
+    keyLinear.disabled = !fit;
+    keyLoess.disabled = !loess;
+    keyRoll.disabled = !roll;
+    for (const [m, b] of Object.entries(modeBtns)) {
+      b.setAttribute("aria-pressed", String(m === trendMode));
+    }
+
     renderTrendDots();
-    writeTrendNote(fit);
+    writeTrendNote(fit, loess, roll, win);
   }
 
   function renderTrendDots() {
@@ -1061,34 +1184,48 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     });
   }
 
-  function writeTrendNote(fit) {
+  function writeTrendNote(fit, loess, roll, win) {
     const p = P();
     const note = document.getElementById("trend-note");
     const hollow = tPart.length
       ? ` ${tPart.length} unvollständige Jahrgänge erscheinen als ausgefüllte Punkte und bleiben aussen vor.`
       : "";
-    if (!fit) {
-      note.textContent = "Ein Punkt je Jahrgang. Für einen Trend liegen im Bereich "
-        + `${effLo()}–${effHi()} zu wenige vollständige Jahrgänge.` + hollow;
-      return;
-    }
-    const x0 = tPts[0].yr, x1 = tPts[tPts.length - 1].yr;
-    const perDecade = fit.slope * 10;
-    const sign = perDecade > 0 ? "+" : "−";
+    const tail = hollow + " Die Achse ist auf die Jahresmittel gezoomt.";
     const u = p.unit ? " " + p.unit : "";
-    const dec = p.rateNf.format(Math.abs(perDecade));
-    const tot = p.rateNf.format(Math.abs(fit.slope * (x1 - x0)));
-    const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(fit.r2);
+    // end minus start of a smoothed curve — the honest "how much overall"
+    const dd = pts => (pts[pts.length - 1].v >= pts[0].v ? "+" : "−")
+      + p.rateNf.format(Math.abs(pts[pts.length - 1].v - pts[0].v));
 
-    note.textContent = (fit.r2 >= R2_STRONG
-      ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec}${u} pro Jahrzehnt, `
-        + `über ${x1 - x0} Jahre ${sign}${tot}${u} (r² = ${r2}). `
-        + `Die Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`
-      : `Ein Punkt je Jahrgang. Kein erkennbarer Trend — die Ausgleichsgerade erklärt nur `
-        + `r² = ${r2} der Schwankung, die Unterschiede zwischen den Jahren überwiegen deutlich `
-        + `(rechnerisch ${sign}${dec}${u} pro Jahrzehnt). `
-        + `Die Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`)
-      + hollow + " Die Achse ist auf die Jahresmittel gezoomt.";
+    if (trendMode === "linear" && fit) {
+      const x0 = tPts[0].yr, x1 = tPts[tPts.length - 1].yr;
+      const perDecade = fit.slope * 10;
+      const sign = perDecade > 0 ? "+" : "−";
+      const dec = p.rateNf.format(Math.abs(perDecade));
+      const tot = p.rateNf.format(Math.abs(fit.slope * (x1 - x0)));
+      const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(fit.r2);
+      note.textContent = (fit.r2 >= R2_STRONG
+        ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec}${u} pro Jahrzehnt, `
+          + `über ${x1 - x0} Jahre ${sign}${tot}${u} (r² = ${r2}). `
+          + `Die gestrichelte Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`
+        : `Ein Punkt je Jahrgang. Kein erkennbarer Trend — die gestrichelte Ausgleichsgerade erklärt nur `
+          + `r² = ${r2} der Schwankung, die Unterschiede zwischen den Jahren überwiegen deutlich `
+          + `(rechnerisch ${sign}${dec}${u} pro Jahrzehnt). `
+          + `Die Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`) + tail;
+    } else if (trendMode === "loess" && loess) {
+      const x0 = tPts[0].yr, x1 = tPts[tPts.length - 1].yr;
+      note.textContent = `Ein Punkt je Jahrgang. Die LOESS-Glättung — eine lokale Regression, `
+        + `deren Spannweite jeweils die halbe Jahresliste umfasst — folgt den vollständigen `
+        + `Jahrgängen ${x0}–${x1}; zwischen Kurvenanfang und -ende liegen ${dd(loess)}${u}.` + tail;
+    } else if (trendMode === "roll" && roll) {
+      note.textContent = `Ein Punkt je Jahrgang. Das gleitende Mittel fasst je ${win} Jahrgänge `
+        + `zentriert zusammen und ist nur gezeichnet, wo das ganze Fenster in der Auswahl liegt `
+        + `(${roll[0].yr}–${roll[roll.length - 1].yr}); zwischen Anfang und Ende liegen ${dd(roll)}${u}.` + tail;
+    } else {
+      const what = { linear: "eine Ausgleichsgerade", loess: "eine LOESS-Glättung",
+                     roll: "ein gleitendes Mittel" }[trendMode];
+      note.textContent = `Ein Punkt je Jahrgang. Für ${what} liegen im Bereich `
+        + `${effLo()}–${effHi()} zu wenige vollständige Jahrgänge.` + hollow;
+    }
   }
 
   /* nearest year wins, so the pointer never has to hit a 8px dot dead-centre */
