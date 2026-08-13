@@ -171,8 +171,6 @@ def german_date(d):
 
 def main():
     years, data, missing, latest = load()
-    span = years[-1] - years[0]
-    positions = [(y - years[0]) / span for y in years]
 
     # the legend gradient is sampled evenly so it stays a true year scale even
     # though the drawn years are not evenly spaced
@@ -183,29 +181,36 @@ def main():
         by_year = data[p["key"]]
         flat = [v for y in years for v in by_year[y] if v is not None]
         domain, ticks = axis_for(flat, p["zero"])
+
+        # each parameter spends the full blue-to-red ramp on its own coverage,
+        # so a shorter record is not squeezed into the red end of a longer one
+        covered = [y for y in years if any(v is not None for v in by_year[y])]
+        y0, y1 = covered[0], covered[-1]
+        pos = [min(1.0, max(0.0, (y - y0) / (y1 - y0))) for y in years]
+
+        # legend ticks on the year scale; endpoints always, decades in between
+        step = 20 if y1 - y0 > 80 else 10
+        legend_years = [y0] + [
+            y for y in range(math.ceil(y0 / step) * step, y1 + 1, step)
+            if 0.03 < (y - y0) / (y1 - y0) < 0.97   # keep clear of the endpoint labels
+        ] + [y1]
+
         params.append({
             "key": p["key"], "label": p["label"], "unit": p["unit"],
             "decimals": p["decimals"], "scale": p["scale"], "offset": p["offset"],
             "domain": domain, "ticks": ticks,
             "series": [encode(by_year[y], p["scale"], p["offset"]) for y in years],
             "trend": trend_for(years, by_year),
+            "light": ramp.ramp(pos, "light"),
+            "dark": ramp.ramp(pos, "dark"),
+            "y0": y0, "y1": y1, "legendYears": legend_years,
         })
-
-    # legend ticks on the year scale; endpoints always, decades in between
-    step = 20 if span > 80 else 10
-    legend_years = [years[0]] + [
-        y for y in range(math.ceil(years[0] / step) * step, years[-1] + 1, step)
-        if 0.03 < (y - years[0]) / span < 0.97   # keep clear of the endpoint labels
-    ] + [years[-1]]
 
     payload = {
         "years": years,
         "params": params,
-        "light": ramp.ramp(positions, "light"),
-        "dark": ramp.ramp(positions, "dark"),
         "legendLight": ramp.ramp(stops, "light"),
         "legendDark": ramp.ramp(stops, "dark"),
-        "legendYears": legend_years,
         "months": MONTHS,
         "monthLengths": MONTH_LENGTHS,
     }
@@ -555,7 +560,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     if (stamp) return stamp === "dark";
     return matchMedia("(prefers-color-scheme: dark)").matches;
   };
-  let colors = isDark() ? D.dark : D.light;
+  // every parameter spreads the full ramp over its own coverage
+  let colors = isDark() ? PARAMS[0].dark : PARAMS[0].light;
 
   /* ---- grid & axes, rebuilt whenever the parameter changes ---- */
   const grid = document.getElementById("grid");
@@ -609,7 +615,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
   function paint() {
     const dark = isDark();
-    colors = dark ? D.dark : D.light;
+    colors = dark ? P().dark : P().light;
     paths.forEach((p, i) => p.setAttribute("stroke", colors[i]));
     document.getElementById("legend-bar").style.background =
       "linear-gradient(to right," + (dark ? D.legendDark : D.legendLight).join(",") + ")";
@@ -620,17 +626,20 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
 
   /* ---- legend ticks, placed at their true position on the year scale ---- */
-  const Y0 = YEARS[0], Y1 = YEARS[N - 1], SPAN = Y1 - Y0;
   const ticks = document.getElementById("legend-ticks");
-  D.legendYears.forEach(yr => {
-    const s = document.createElement("span");
-    s.textContent = yr;
-    const f = (yr - Y0) / SPAN;
-    s.style.left = (f * 100) + "%";
-    if (f < 0.02) s.style.transform = "none";
-    if (f > 0.98) s.style.transform = "translateX(-100%)";
-    ticks.appendChild(s);
-  });
+  function drawLegendTicks() {
+    const p = P();
+    ticks.textContent = "";
+    p.legendYears.forEach(yr => {
+      const s = document.createElement("span");
+      s.textContent = yr;
+      const f = (yr - p.y0) / (p.y1 - p.y0);
+      s.style.left = (f * 100) + "%";
+      if (f < 0.02) s.style.transform = "none";
+      if (f > 0.98) s.style.transform = "translateX(-100%)";
+      ticks.appendChild(s);
+    });
+  }
 
   /* ---- state ---- */
   let selected = null, hovered = null, cursorDay = null;
@@ -1002,13 +1011,13 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     drawAxes();
     drawPaths();
     drawTrend();
-    render();
+    drawLegendTicks();
+    paint();   // colors are per parameter; ends in render()
   }
 
   crosshair.setAttribute("y1", M.top);
   crosshair.setAttribute("y2", BASE_Y);
   select(0);
-  paint();
 })();
 </script>
 """
