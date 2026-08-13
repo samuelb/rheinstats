@@ -65,6 +65,11 @@ Export nicht abdeckt, also für die jüngsten Messwerte seit dem Exportdatum.
 Im Überlappungsbereich stimmen beide Quellen überein (geprüft: maximale
 Abweichung 0.02 am noch provisorischen letzten Tag).
 
+Ein GitHub-Actions-Workflow ([`update-data.yml`](.github/workflows/update-data.yml))
+führt den Abruf täglich aus und baut die Seite neu. Geholt wird inkrementell —
+vom neuesten bereits erfassten Tag bis einschliesslich gestern; der laufende Tag
+bleibt aussen vor, da sein Tagesmittel noch unvollständig ist.
+
 Verbleibende Lücken der Darstellung:
 
 - **29. Februar** wird nicht gezeigt; die Grafik nutzt ein 365-Tage-Raster.

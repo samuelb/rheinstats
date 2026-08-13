@@ -16,8 +16,14 @@ Caveats of this source (see README):
   * only ~1981 onwards is served, and 1983/1985/1986 come back empty
   * the x axis is a 365-day day-of-year grid, so 29 February is missing
 
+Runs are incremental: an existing --out CSV is read first and only the years
+from its newest day onward are refetched (overlapping days are refreshed, they
+may still be provisional). Days after yesterday are never written — the current
+day's mean is incomplete. Without an existing CSV the full 1981..today range is
+fetched.
+
 Usage:
-    python3 fetch_hydrodaten.py                 # station 2143, 1981..current
+    python3 fetch_hydrodaten.py                 # station 2143, incremental
     python3 fetch_hydrodaten.py --station 2091 --start 2000 --end 2024
 """
 
@@ -62,15 +68,32 @@ def fetch_year(station, plot, year):
     return out
 
 
+def load_existing(path):
+    """Return {date: {column: value}} from a previous run, or {}."""
+    rows = {}
+    try:
+        with open(path, newline="") as fh:
+            for rec in csv.DictReader(fh):
+                date = dt.date.fromisoformat(rec.pop("date"))
+                rows[date] = {c: v for c, v in rec.items() if v != ""}
+    except FileNotFoundError:
+        pass
+    return rows
+
+
 def main():
     ap = argparse.ArgumentParser()
     ap.add_argument("--station", default="2143")
-    ap.add_argument("--start", type=int, default=1981)
-    ap.add_argument("--end", type=int, default=dt.date.today().year)
+    ap.add_argument("--start", type=int, help="default: year of the newest day in --out")
+    ap.add_argument("--end", type=int, help="default: yesterday's year")
     ap.add_argument("--out", default="rhein_rekingen_daily.csv")
     args = ap.parse_args()
 
-    years = range(args.start, args.end + 1)
+    rows = load_existing(args.out)
+    yesterday = dt.date.today() - dt.timedelta(days=1)
+    start = args.start or (max(rows).year if rows else 1981)
+    end = args.end or yesterday.year
+    years = range(start, end + 1)
     jobs = [(plot, y) for plot in PARAMS for y in years]
 
     def run(job):
@@ -81,17 +104,18 @@ def main():
             print(f"  ! {plot} {year}: {exc}")
             return job, {}
 
-    rows = {}
     with ThreadPoolExecutor(6) as pool:
         for (plot, year), series in pool.map(run, jobs):
             column = PARAMS[plot][0]
             for date, value in series.items():
+                if date > yesterday:
+                    continue
                 rows.setdefault(date, {})[column] = value
             print(f"  {plot:20s} {year}  {len(series):3d} days")
 
     columns = [PARAMS[p][0] for p in PARAMS]
-    with open(args.out, "w", newline="\n") as fh:
-        writer = csv.writer(fh)
+    with open(args.out, "w", newline="") as fh:
+        writer = csv.writer(fh, lineterminator="\n")
         writer.writerow(["date"] + columns)
         for date in sorted(rows):
             writer.writerow([date.isoformat()] + [rows[date].get(c, "") for c in columns])
