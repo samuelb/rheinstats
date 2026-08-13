@@ -25,7 +25,15 @@ import ramp
 CSV_API = "rhein_rekingen_daily.csv"
 EXPORT_GLOB = "measurements/*.csv"
 # Parameter name in the export -> our param key
-EXPORT_PARAMS = {"Wassertemperatur": "temperature", "Abfluss": "discharge", "Pegel": "level"}
+EXPORT_PARAMS = {
+    "Wassertemperatur": "temperature",
+    "Abfluss": "discharge",
+    "Pegel": "level",
+    "Elektrische Leitfähigkeit": "conductivity",
+    "pH-Wert": "ph",
+    "Sauerstoff": "oxygen",
+    "Sauerstoff-Sättigung": "oxysat",
+}
 MIN_DAYS = 30    # a year with fewer points than this is a portal artifact, not a line
 FULL_DAYS = 360  # below this a year's mean is not comparable, so it stays out of the trend
 
@@ -35,8 +43,11 @@ MONTHS_FULL = ["Januar", "Februar", "März", "April", "Mai", "Juni", "Juli",
 MONTH_LENGTHS = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31]
 
 # column, tab label, unit, decimals shown, encoding scale/offset, zero baseline?
-# Water level is an altitude in m ü.M., so a zero baseline would be meaningless —
-# discharge and temperature both have a real zero and keep one.
+# Temperature, discharge and oxygen have a real zero within reach and keep one.
+# Water level is an altitude, pH a log scale, saturation lives around 100 % and
+# conductivity far above zero — a zero baseline would flatten those, so their
+# axes zoom to the data instead. `axis` labels the y axis where the bare unit
+# would not (pH has none).
 PARAMS = [
     dict(key="temperature", col="temperature_c", label="Temperatur",
          unit="°C", decimals=1, scale=10, offset=0, zero=True),
@@ -44,6 +55,14 @@ PARAMS = [
          unit="m³/s", decimals=0, scale=10, offset=0, zero=True),
     dict(key="level", col="waterlevel_m", label="Wasserstand",
          unit="m ü.M.", decimals=2, scale=1000, offset=320, zero=False),
+    dict(key="conductivity", col="conductivity_uscm", label="Leitfähigkeit",
+         unit="µS/cm", decimals=1, scale=10, offset=250, zero=False),
+    dict(key="ph", col="ph", label="pH-Wert",
+         unit="", axis="pH-Wert", decimals=2, scale=100, offset=7, zero=False),
+    dict(key="oxygen", col="oxygen_mgl", label="Sauerstoff",
+         unit="mg/l", decimals=2, scale=100, offset=0, zero=True),
+    dict(key="oxysat", col="oxygen_sat_pct", label="Sauerstoff-Sättigung",
+         unit="%", decimals=1, scale=10, offset=0, zero=False),
 ]
 
 
@@ -81,10 +100,11 @@ def load():
                 continue  # gaps are spelled "Lücke"
             put(key, dt.date.fromisoformat(row["Zeitstempel"][:10]), value)
 
+    # the API carries only temperature, discharge and level — .get skips the rest
     for row in csv.DictReader(open(CSV_API)):
         date = dt.date.fromisoformat(row["date"])
         for p in PARAMS:
-            if row[p["col"]]:
+            if row.get(p["col"]):
                 put(p["key"], date, float(row[p["col"]]))
 
     def days(key, year):
@@ -132,20 +152,25 @@ def axis_for(values, zero):
 
 
 def trend_for(years, by_year):
-    """Annual means of the essentially complete years — a partial year's mean is
-    biased by whichever seasons it happens to contain and is not comparable.
+    """Annual means, split into complete and incomplete years.
 
-    The least-squares fit itself lives client-side, where the year range can be
-    narrowed and the fit has to follow the selection.
+    An incomplete year's mean is biased by whichever seasons it happens to
+    contain, so it is drawn hollow and never feeds the fit. The least-squares
+    fit itself lives client-side, where the year range can be narrowed and the
+    fit has to follow the selection.
     """
-    pts = [(i, y, by_year[y]) for i, y in enumerate(years)
-           if sum(v is not None for v in by_year[y]) >= FULL_DAYS]
-    means = [st.fmean(v for v in vals if v is not None) for _, _, vals in pts]
-    domain, ticks = axis_for(means, zero=False)
+    full, part = [], []
+    for i, y in enumerate(years):
+        vals = [v for v in by_year[y] if v is not None]
+        if vals:
+            (full if len(vals) >= FULL_DAYS else part).append((i, st.fmean(vals)))
+    domain, ticks = axis_for([m for _, m in full + part], zero=False)
 
     return {
-        "idx": [i for i, _, _ in pts],
-        "means": [round(m, 4) for m in means],
+        "idx": [i for i, _ in full],
+        "means": [round(m, 4) for _, m in full],
+        "pidx": [i for i, _ in part],
+        "pmeans": [round(m, 4) for _, m in part],
         "domain": domain, "ticks": ticks,
     }
 
@@ -182,6 +207,7 @@ def main():
 
         params.append({
             "key": p["key"], "label": p["label"], "unit": p["unit"],
+            "axis": p.get("axis", p["unit"]),
             "decimals": p["decimals"], "scale": p["scale"], "offset": p["offset"],
             "domain": domain, "ticks": ticks,
             "series": [encode(by_year[y], p["scale"], p["offset"]) for y in years],
@@ -258,7 +284,7 @@ STANDALONE_CSS = """\
   html[data-theme="light"] { color-scheme: light; }
 """
 
-TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstand</title>
+TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstand, Wasserchemie</title>
 <style>
   .viz-root {
     color-scheme: light;
@@ -337,7 +363,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
   .tabs {
-    display: inline-flex; gap: 2px; padding: 3px; margin-bottom: 14px;
+    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 14px;
     background: var(--ghost); border-radius: 9px;
   }
   .tab {
@@ -524,10 +550,12 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
   <p class="note">
     Quelle: Bundesamt für Umwelt BAFU, Station 2143 Rhein–Rekingen, Tagesmittel
-    von Wassertemperatur, Abfluss und Wasserstand. Vollständige Messreihen vom
-    Datenservice Hydrologie des BAFU, ergänzt um die jüngsten Tage aus den
-    Jahresganglinien von hydrodaten.admin.ch. Der Wasserstand ist eine Höhe über
-    Meer, seine Achse beginnt daher nicht bei null. __NOTE__
+    von Wassertemperatur, Abfluss, Wasserstand, elektrischer Leitfähigkeit,
+    pH-Wert, Sauerstoffgehalt und Sauerstoff-Sättigung. Vollständige Messreihen
+    vom Datenservice Hydrologie des BAFU, ergänzt um die jüngsten Tage aus den
+    Jahresganglinien von hydrodaten.admin.ch. Wasserstand (eine Höhe über Meer),
+    Leitfähigkeit, pH-Wert und Sauerstoff-Sättigung tragen auf die Messwerte
+    gezoomte Achsen ohne Nullpunkt. __NOTE__
   </p>
   <footer class="note stamp">__STAMP__</footer>
 </div>
@@ -619,7 +647,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       if (i > 0) grid.appendChild(el("line", { class: "grid-line", x1: x(monthStart[i]), x2: x(monthStart[i]), y1: M.top, y2: BASE_Y }));
     });
     const yTitle = el("text", { class: "axis-title", x: M.left - 9, y: M.top - 12, "text-anchor": "end" });
-    yTitle.textContent = p.unit;
+    yTitle.textContent = p.axis;
     axes.appendChild(yTitle);
   }
 
@@ -685,8 +713,17 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   const rangeLabel = document.getElementById("range-label");
   const rangeReset = document.getElementById("range-reset");
 
-  const effLo = () => Math.max(P().y0, rLo == null ? P().y0 : rLo);
-  const effHi = () => Math.min(P().y1, rHi == null ? P().y1 : rHi);
+  // a range carried over from another tab may not intersect this parameter's
+  // coverage at all — showing nothing helps no one, so the caps yield instead
+  // and the tab falls back to all of its measured years
+  const effRange = () => {
+    const p = P();
+    const lo = Math.max(p.y0, rLo == null ? p.y0 : rLo);
+    const hi = Math.min(p.y1, rHi == null ? p.y1 : rHi);
+    return lo > hi ? [p.y0, p.y1] : [lo, hi];
+  };
+  const effLo = () => effRange()[0];
+  const effHi = () => effRange()[1];
   const inRange = i => YEARS[i] >= effLo() && YEARS[i] <= effHi();
   const visible = i => HAS[pi][i] && inRange(i);
 
@@ -777,7 +814,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     renderTrendDots();
   }
 
-  function fmt(v) { return P().nf.format(v) + " " + P().unit; }
+  function fmt(v) { return P().nf.format(v) + (P().unit ? " " + P().unit : ""); }
 
   function dayLabel(d) {
     let m = 0;
@@ -922,7 +959,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   // the x domain follows the year-range selection; the fit is recomputed over
   // exactly the complete years in view, so line and note never show stale data
   let tView = { x0: 0, x1: 1 };
-  let tPts = [];   // { ix, yr, m } of the complete years within the range
+  let tPts = [];    // { ix, yr, m } of the complete years within the range
+  let tPart = [];   // incomplete years: drawn hollow, never part of the fit
 
   const tx = yr => TM.left + ((yr - tView.x0) / (tView.x1 - tView.x0)) * TPW;
   const ty = v => {
@@ -952,8 +990,14 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     t.idx.forEach((ix, k) => {
       if (inRange(ix)) tPts.push({ ix, yr: YEARS[ix], m: t.means[k] });
     });
-    const yr0 = tPts.length ? tPts[0].yr : effLo();
-    const yr1 = tPts.length ? tPts[tPts.length - 1].yr : effHi();
+    tPart = [];
+    t.pidx.forEach((ix, k) => {
+      if (inRange(ix)) tPart.push({ ix, yr: YEARS[ix], m: t.pmeans[k], part: true });
+    });
+    // the view spans every drawn dot, hollow ones included
+    const shown = tPts.concat(tPart);
+    const yr0 = shown.length ? Math.min(...shown.map(d => d.yr)) : effLo();
+    const yr1 = shown.length ? Math.max(...shown.map(d => d.yr)) : effHi();
     tView = yr1 > yr0 ? { x0: yr0, x1: yr1 } : { x0: yr0 - 1, x1: yr0 + 1 };
 
     tGrid.textContent = "";
@@ -974,7 +1018,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       tAxes.appendChild(lb);
     }
     const unit = el("text", { class: "axis-title", x: TM.left - 9, y: TM.top - 12, "text-anchor": "end" });
-    unit.textContent = p.unit;
+    unit.textContent = p.axis;
     tAxes.appendChild(unit);
 
     // the year-to-year line stays recessive; it is context for the fit, not the point
@@ -986,53 +1030,65 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
     // same weight and colour in every tab; how much the fit is worth is said in
     // the caption, not whispered through the line's opacity
+    // the fitted line spans only the complete years it is computed from
     const fit = tPts.length >= 3 ? fitOver(tPts) : null;
     tFit.style.display = fit ? "" : "none";
     if (fit) {
+      const fx0 = tPts[0].yr, fx1 = tPts[tPts.length - 1].yr;
       tFit.setAttribute("d",
-        `M${tx(yr0).toFixed(1)} ${ty(fit.slope * yr0 + fit.intercept).toFixed(1)} ` +
-        `L${tx(yr1).toFixed(1)} ${ty(fit.slope * yr1 + fit.intercept).toFixed(1)}`);
+        `M${tx(fx0).toFixed(1)} ${ty(fit.slope * fx0 + fit.intercept).toFixed(1)} ` +
+        `L${tx(fx1).toFixed(1)} ${ty(fit.slope * fx1 + fit.intercept).toFixed(1)}`);
     }
 
     renderTrendDots();
-    writeTrendNote(fit, yr0, yr1);
+    writeTrendNote(fit);
   }
 
   function renderTrendDots() {
     tDots.textContent = "";
-    tPts.forEach(d => {
+    const dim = (selected != null || hovered != null);
+    tPts.concat(tPart).forEach(d => {
       const lift = d.ix === selected || d.ix === hovered;
       const g = el("g", { class: "dot-year" });
-      g.appendChild(el("circle", {
+      const c = el("circle", {
         cx: tx(d.yr), cy: ty(d.m), r: lift ? 6 : 4,
-        fill: colors[d.ix], opacity: (selected != null || hovered != null) && !lift ? 0.35 : 1,
-      }));
+        fill: colors[d.ix], opacity: dim && !lift ? 0.35 : 1,
+      });
+      // hollow ring = complete year; filled dot = incomplete, shown but not trusted
+      if (!d.part) c.setAttribute("style", "fill:none;stroke:" + colors[d.ix] + ";stroke-width:2");
+      g.appendChild(c);
       tDots.appendChild(g);
     });
   }
 
-  function writeTrendNote(fit, x0, x1) {
+  function writeTrendNote(fit) {
     const p = P();
     const note = document.getElementById("trend-note");
+    const hollow = tPart.length
+      ? ` ${tPart.length} unvollständige Jahrgänge erscheinen als ausgefüllte Punkte und bleiben aussen vor.`
+      : "";
     if (!fit) {
       note.textContent = "Ein Punkt je Jahrgang. Für einen Trend liegen im Bereich "
-        + `${effLo()}–${effHi()} zu wenige vollständige Jahrgänge.`;
+        + `${effLo()}–${effHi()} zu wenige vollständige Jahrgänge.` + hollow;
       return;
     }
+    const x0 = tPts[0].yr, x1 = tPts[tPts.length - 1].yr;
     const perDecade = fit.slope * 10;
     const sign = perDecade > 0 ? "+" : "−";
+    const u = p.unit ? " " + p.unit : "";
     const dec = p.rateNf.format(Math.abs(perDecade));
     const tot = p.rateNf.format(Math.abs(fit.slope * (x1 - x0)));
     const r2 = new Intl.NumberFormat("de-CH", { minimumFractionDigits: 2, maximumFractionDigits: 2 }).format(fit.r2);
 
-    note.textContent = fit.r2 >= R2_STRONG
-      ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec} ${p.unit} pro Jahrzehnt, `
-        + `über ${x1 - x0} Jahre ${sign}${tot} ${p.unit} (r² = ${r2}). `
-        + `Nur vollständige Jahrgänge, ${x0}–${x1}; die Achse ist auf die Jahresmittel gezoomt.`
+    note.textContent = (fit.r2 >= R2_STRONG
+      ? `Ein Punkt je Jahrgang. Linearer Trend ${sign}${dec}${u} pro Jahrzehnt, `
+        + `über ${x1 - x0} Jahre ${sign}${tot}${u} (r² = ${r2}). `
+        + `Die Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`
       : `Ein Punkt je Jahrgang. Kein erkennbarer Trend — die Ausgleichsgerade erklärt nur `
         + `r² = ${r2} der Schwankung, die Unterschiede zwischen den Jahren überwiegen deutlich `
-        + `(rechnerisch ${sign}${dec} ${p.unit} pro Jahrzehnt). `
-        + `Nur vollständige Jahrgänge, ${x0}–${x1}; die Achse ist auf die Jahresmittel gezoomt.`;
+        + `(rechnerisch ${sign}${dec}${u} pro Jahrzehnt). `
+        + `Die Gerade stützt sich auf die vollständigen Jahrgänge ${x0}–${x1}.`)
+      + hollow + " Die Achse ist auf die Jahresmittel gezoomt.";
   }
 
   /* nearest year wins, so the pointer never has to hit a 8px dot dead-centre */
@@ -1040,7 +1096,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     const box = tSvg.getBoundingClientRect();
     const sx = ((ev.clientX - box.left) / box.width) * TW;
     let best = null, bestD = Infinity;
-    tPts.forEach(d => {
+    tPts.concat(tPart).forEach(d => {
       const dd = Math.abs(tx(d.yr) - sx);
       if (dd < bestD) { bestD = dd; best = d; }
     });
@@ -1056,7 +1112,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     tTip.textContent = "";
     const head = document.createElement("div");
     head.className = "tt-day";
-    head.textContent = "Jahresmittel";
+    head.textContent = hit.part ? "Jahresmittel — Jahrgang unvollständig" : "Jahresmittel";
     tTip.appendChild(head);
     const row = document.createElement("div");
     row.className = "tt-row";
@@ -1065,7 +1121,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     key.style.background = colors[hit.ix];
     const val = document.createElement("span");
     val.className = "tt-val";
-    val.textContent = p.nf.format(hit.m) + " " + p.unit;
+    val.textContent = p.nf.format(hit.m) + (p.unit ? " " + p.unit : "");
     const lab = document.createElement("span");
     lab.className = "tt-lab";
     lab.textContent = hit.yr;
@@ -1121,7 +1177,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     });
     panel.setAttribute("aria-labelledby", tabs[i].id);
     svg.setAttribute("aria-label",
-      "Tagesmittel " + P().label + " des Rheins bei Rekingen in " + P().unit +
+      "Tagesmittel " + P().label + " des Rheins bei Rekingen" +
+      (P().unit ? " in " + P().unit : "") +
       ", ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.");
     drawAxes();
     drawPaths();

@@ -1,14 +1,15 @@
 # Der Rhein bei Rekingen
 
-Wie sich Wassertemperatur, Abfluss und Wasserstand des Rheins über die Jahre
-verändert haben — bis zu 123 Jahrgänge Tagesmittel, jeder als eigener Linienzug
-über den Jahresverlauf gelegt, eingefärbt von Blau (älteste) nach Rot (jüngste
-Messung).
+Wie sich Wassertemperatur, Abfluss, Wasserstand und Wasserchemie des Rheins
+über die Jahre verändert haben — bis zu 123 Jahrgänge Tagesmittel, jeder als
+eigener Linienzug über den Jahresverlauf gelegt, eingefärbt von Blau (älteste)
+nach Rot (jüngste Messung).
 
 **→ [Zur Visualisierung](https://samuelb.github.io/rheinstats/)**
 
 Eine Linie anklicken hebt ihr Jahr hervor; Hover und Pfeiltasten zeigen den Wert
-am Zeigerdatum. Tabs schalten zwischen Temperatur, Abfluss und Wasserstand um.
+am Zeigerdatum. Tabs schalten zwischen den Messgrössen um, zwei Schieberegler
+auf der Farblegende grenzen den Jahresbereich ein.
 
 ## Datenquelle
 
@@ -36,21 +37,24 @@ nicht dem BAFU anzulasten.
 
 ## Messreihe der Station 2143
 
-| Parameter             | Messbeginn beim BAFU |
-| --------------------- | -------------------- |
-| Abfluss (m³/s)        | 1904                 |
-| Wasserstand (m ü.M.)  | 1964                 |
-| Wassertemperatur (°C) | 1969                 |
+| Parameter                        | Messbeginn beim BAFU |
+| -------------------------------- | -------------------- |
+| Abfluss (m³/s)                   | 1904                 |
+| Wasserstand (m ü.M.)             | 1964                 |
+| Wassertemperatur (°C)            | 1969                 |
+| Elektrische Leitfähigkeit (µS/cm)| 1976                 |
+| pH-Wert                          | 1976                 |
+| Sauerstoff (mg/l und Sättigung %)| 1976                 |
 
 ### Primäre Quelle: Datenservice Hydrologie (`measurements/`)
 
 Die vollständigen Messreihen liegen seit August 2026 als CSV-Export des
 Datenservice Hydrologie des BAFU vor, im Ordner [`measurements/`](measurements/).
-Sie decken alle drei Parameter lückenlos vom jeweiligen Messbeginn bis zum
-Exportdatum (12. August 2026) ab — zusammen 123 Jahrgänge, 1904–2026. Der
-Export enthält zusätzlich elektrische Leitfähigkeit, pH-Wert, Sauerstoffgehalt
-und Sauerstoff-Sättigung (ab 1976, mit Lücken); diese werden derzeit noch nicht
-dargestellt.
+Wassertemperatur, Abfluss und Wasserstand sind lückenlos vom jeweiligen
+Messbeginn bis zum Exportdatum (12. August 2026) abgedeckt — zusammen
+123 Jahrgänge, 1904–2026. Die vier Wasserchemie-Reihen (ab 1976) tragen
+quellenseitig einzelne Lücken; unvollständige Jahrgänge bleiben dort aus der
+Trendberechnung ausgeschlossen.
 
 ### Ergänzende Quelle: hydrodaten.admin.ch
 
