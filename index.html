@@ -192,7 +192,7 @@
   .clim-key svg { flex: none; width: 20px; height: 10px; }
   .tt-aux { font-size: 0.72rem; color: var(--text-secondary); margin-top: 3px; font-variant-numeric: tabular-nums; }
 
-  .legend { margin: 18px 0 4px; }
+  .legend { margin: 2px 0 18px; }
   .legend-track { position: relative; }
   .legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
   .legend-shade {
@@ -278,32 +278,18 @@
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
 
-  <div class="card" id="panel" role="tabpanel">
-    <div class="plot" id="plot">
-      <svg id="chart" viewBox="0 0 960 470" role="img" tabindex="0"
-           aria-label="Tagesmittel des Rheins bei Rekingen, ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.">
-        <g id="grid"></g>
-        <g id="lines"></g>
-        <line id="crosshair" class="crosshair"></line>
-        <g id="dots"></g>
-        <g id="axes"></g>
-      </svg>
-      <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+  <div class="legend">
+    <div class="legend-cap">Messjahr<span id="range-label"></span>
+      <button type="button" class="range-reset" id="range-reset" hidden>Alle Jahre</button>
     </div>
-
-    <div class="legend">
-      <div class="legend-cap">Messjahr<span id="range-label"></span>
-        <button type="button" class="range-reset" id="range-reset" hidden>Alle Jahre</button>
-      </div>
-      <div class="legend-track">
-        <div class="legend-bar" id="legend-bar"></div>
-        <div class="legend-shade" id="shade-lo"></div>
-        <div class="legend-shade" id="shade-hi"></div>
-        <input type="range" id="range-lo" step="1" aria-label="Ältestes angezeigtes Jahr">
-        <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
-      </div>
-      <div class="legend-ticks" id="legend-ticks"></div>
+    <div class="legend-track">
+      <div class="legend-bar" id="legend-bar"></div>
+      <div class="legend-shade" id="shade-lo"></div>
+      <div class="legend-shade" id="shade-hi"></div>
+      <input type="range" id="range-lo" step="1" aria-label="Ältestes angezeigtes Jahr">
+      <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
     </div>
+    <div class="legend-ticks" id="legend-ticks"></div>
   </div>
 
   <div class="card">
@@ -332,6 +318,20 @@
         <g id="clim-axes"></g>
       </svg>
       <div class="tooltip" id="clim-tooltip" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div class="card" id="panel" role="tabpanel">
+    <div class="plot" id="plot">
+      <svg id="chart" viewBox="0 0 960 470" role="img" tabindex="0"
+           aria-label="Tagesmittel des Rheins bei Rekingen, ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.">
+        <g id="grid"></g>
+        <g id="lines"></g>
+        <line id="crosshair" class="crosshair"></line>
+        <g id="dots"></g>
+        <g id="axes"></g>
+      </svg>
+      <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
     </div>
   </div>
 
@@ -376,7 +376,7 @@
     Leitfähigkeit, pH-Wert und Sauerstoff-Sättigung tragen auf die Messwerte
     gezoomte Achsen ohne Nullpunkt. 123 Jahrgänge, 1904–2026 — Temperatur ab 1969, Abfluss ab 1904, Wasserstand ab 1964, Leitfähigkeit ab 1976, pH-Wert ab 1976, Sauerstoff ab 1976, Sauerstoff-Sättigung ab 1976; die Jahresliste führt je Messgrösse nur Jahre mit Messwerten. 2026 unvollständig. Der 29. Februar liegt ausserhalb des 365-Tage-Rasters der Darstellung.
   </p>
-  <footer class="note stamp">Neueste Messwerte vom 24. August 2026 · Seite erstellt am 25. August 2026 um 19:15 Uhr</footer>
+  <footer class="note stamp">Neueste Messwerte vom 24. August 2026 · Seite erstellt am 25. August 2026 um 19:19 Uhr</footer>
 </div>
 </div>
 
@@ -1244,7 +1244,7 @@
       + `${idxs.length} Jahrgänge ${y0}–${y1} zusammen — Spannweite (Min–Max), 5.–95. und `
       + `25.–75. Perzentil, die graue Linie den Median. Darüber liegen ${curY} (rot) `
       + `und ${prevY} (blau); beide fliessen nicht in die Bänder ein und bleiben auch `
-      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Grafik oben.`;
+      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Jahrgangs-Grafik unten.`;
   }
 
   function climLeave() {

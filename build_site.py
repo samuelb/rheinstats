@@ -463,7 +463,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .clim-key svg { flex: none; width: 20px; height: 10px; }
   .tt-aux { font-size: 0.72rem; color: var(--text-secondary); margin-top: 3px; font-variant-numeric: tabular-nums; }
 
-  .legend { margin: 18px 0 4px; }
+  .legend { margin: 2px 0 18px; }
   .legend-track { position: relative; }
   .legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
   .legend-shade {
@@ -549,32 +549,18 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
 
-  <div class="card" id="panel" role="tabpanel">
-    <div class="plot" id="plot">
-      <svg id="chart" viewBox="0 0 960 470" role="img" tabindex="0"
-           aria-label="Tagesmittel des Rheins bei Rekingen, ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.">
-        <g id="grid"></g>
-        <g id="lines"></g>
-        <line id="crosshair" class="crosshair"></line>
-        <g id="dots"></g>
-        <g id="axes"></g>
-      </svg>
-      <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
+  <div class="legend">
+    <div class="legend-cap">Messjahr<span id="range-label"></span>
+      <button type="button" class="range-reset" id="range-reset" hidden>Alle Jahre</button>
     </div>
-
-    <div class="legend">
-      <div class="legend-cap">Messjahr<span id="range-label"></span>
-        <button type="button" class="range-reset" id="range-reset" hidden>Alle Jahre</button>
-      </div>
-      <div class="legend-track">
-        <div class="legend-bar" id="legend-bar"></div>
-        <div class="legend-shade" id="shade-lo"></div>
-        <div class="legend-shade" id="shade-hi"></div>
-        <input type="range" id="range-lo" step="1" aria-label="Ältestes angezeigtes Jahr">
-        <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
-      </div>
-      <div class="legend-ticks" id="legend-ticks"></div>
+    <div class="legend-track">
+      <div class="legend-bar" id="legend-bar"></div>
+      <div class="legend-shade" id="shade-lo"></div>
+      <div class="legend-shade" id="shade-hi"></div>
+      <input type="range" id="range-lo" step="1" aria-label="Ältestes angezeigtes Jahr">
+      <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
     </div>
+    <div class="legend-ticks" id="legend-ticks"></div>
   </div>
 
   <div class="card">
@@ -603,6 +589,20 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
         <g id="clim-axes"></g>
       </svg>
       <div class="tooltip" id="clim-tooltip" role="status" aria-live="polite"></div>
+    </div>
+  </div>
+
+  <div class="card" id="panel" role="tabpanel">
+    <div class="plot" id="plot">
+      <svg id="chart" viewBox="0 0 960 470" role="img" tabindex="0"
+           aria-label="Tagesmittel des Rheins bei Rekingen, ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.">
+        <g id="grid"></g>
+        <g id="lines"></g>
+        <line id="crosshair" class="crosshair"></line>
+        <g id="dots"></g>
+        <g id="axes"></g>
+      </svg>
+      <div class="tooltip" id="tooltip" role="status" aria-live="polite"></div>
     </div>
   </div>
 
@@ -1515,7 +1515,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       + `${idxs.length} Jahrgänge ${y0}–${y1} zusammen — Spannweite (Min–Max), 5.–95. und `
       + `25.–75. Perzentil, die graue Linie den Median. Darüber liegen ${curY} (rot) `
       + `und ${prevY} (blau); beide fliessen nicht in die Bänder ein und bleiben auch `
-      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Grafik oben.`;
+      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Jahrgangs-Grafik unten.`;
   }
 
   function climLeave() {
