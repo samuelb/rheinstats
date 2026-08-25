@@ -222,6 +222,10 @@ def main():
         "params": params,
         "legendLight": ramp.ramp(stops, "light"),
         "legendDark": ramp.ramp(stops, "dark"),
+        # the previous year's line in the percentile card: the blue end of the
+        # year ramp — the farthest hue from the current-year red, separable from
+        # it also under CVD (pair validated against both surfaces)
+        "prev": {"light": ramp.at(0.0, "light"), "dark": ramp.at(0.0, "dark")},
         "months": MONTHS,
         "monthLengths": MONTH_LENGTHS,
     }
@@ -440,6 +444,25 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .spine { stroke: var(--axis); stroke-width: 1; fill: none; opacity: 0.55; }
   .dot-year circle { stroke: var(--surface-1); stroke-width: 2; }
 
+  /* climatology card: nested percentile bands in neutral ink, so the two
+     youngest years — the subject — keep the only colour on the plot */
+  .clim-band { fill: var(--text-primary); }
+  .clim-minmax { opacity: 0.05; }
+  .clim-p90 { opacity: 0.08; }
+  .clim-p50 { opacity: 0.11; }
+  #clim-median { stroke: var(--text-secondary); stroke-width: 1.6; fill: none; stroke-linecap: round; }
+  #clim-cur { fill: none; stroke-width: 2.4; stroke-linejoin: round; stroke-linecap: round; }
+  #clim-prev { fill: none; stroke-width: 1.8; stroke-linejoin: round; stroke-linecap: round; }
+  .clim-label { fill: var(--text-secondary); font-size: 11px; font-weight: 600; }
+  .clim-keys {
+    display: inline-flex; flex-wrap: wrap; gap: 4px 14px; margin-left: auto; align-items: center;
+    font-size: 0.75rem; color: var(--text-secondary);
+  }
+  .clim-key { display: inline-flex; align-items: center; gap: 6px; white-space: nowrap; }
+  /* the page-wide svg rule stretches to 100% width — the key samples must not */
+  .clim-key svg { flex: none; width: 20px; height: 10px; }
+  .tt-aux { font-size: 0.72rem; color: var(--text-secondary); margin-top: 3px; font-variant-numeric: tabular-nums; }
+
   .legend { margin: 18px 0 4px; }
   .legend-track { position: relative; }
   .legend-bar { height: 8px; border-radius: 4px; border: 1px solid var(--hairline); }
@@ -551,6 +574,35 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
         <input type="range" id="range-hi" step="1" aria-label="Jüngstes angezeigtes Jahr">
       </div>
       <div class="legend-ticks" id="legend-ticks"></div>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="card-head">
+      <h2 class="card-title" id="clim-title">Die jüngsten Jahre im langjährigen Vergleich</h2>
+      <div class="clim-keys">
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><line id="clim-key-cur" x1="1" y1="5" x2="19" y2="5" stroke-width="2.4" stroke-linecap="round"></line></svg><span id="clim-key-cur-label">Laufendes Jahr</span></span>
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><line id="clim-key-prev" x1="1" y1="5" x2="19" y2="5" stroke-width="1.8" stroke-linecap="round"></line></svg><span id="clim-key-prev-label">Vorjahr</span></span>
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><line x1="1" y1="5" x2="19" y2="5" style="stroke: var(--text-secondary); stroke-width: 1.6"></line></svg>Median</span>
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><rect x="1" y="1" width="18" height="8" rx="2" style="fill: var(--text-primary); fill-opacity: .22"></rect></svg>25–75&nbsp;%</span>
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><rect x="1" y="1" width="18" height="8" rx="2" style="fill: var(--text-primary); fill-opacity: .12"></rect></svg>5–95&nbsp;%</span>
+        <span class="clim-key"><svg viewBox="0 0 20 10" aria-hidden="true"><rect x="1" y="1" width="18" height="8" rx="2" style="fill: var(--text-primary); fill-opacity: .05; stroke: var(--hairline)"></rect></svg>Min–Max</span>
+      </div>
+    </div>
+    <p class="card-note" id="clim-note"></p>
+    <div class="plot" id="clim-plot">
+      <svg id="clim" viewBox="0 0 960 340" role="img">
+        <g id="clim-grid"></g>
+        <g id="clim-bands"></g>
+        <path id="clim-median"></path>
+        <path id="clim-prev"></path>
+        <path id="clim-cur"></path>
+        <g id="clim-labels"></g>
+        <line id="clim-crosshair" class="crosshair"></line>
+        <g id="clim-dots"></g>
+        <g id="clim-axes"></g>
+      </svg>
+      <div class="tooltip" id="clim-tooltip" role="status" aria-live="polite"></div>
     </div>
   </div>
 
@@ -718,6 +770,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     document.getElementById("legend-bar").style.background =
       "linear-gradient(to right," + (dark ? D.legendDark : D.legendLight).join(",") + ")";
     document.querySelectorAll(".yr-key").forEach((k, i) => { k.style.background = colors[i]; });
+    climPaint();   // the overlay years wear the same ramp colours as above
     render();
   }
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
@@ -785,6 +838,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     if (hovered != null && !visible(hovered)) hovered = null;
     yearBtns.forEach((b, k) => { b.hidden = !visible(k); });
     drawTrend();   // the fit follows the selection
+    drawClim();    // so do the percentile bands; the overlay years stay
     render();
   }
 
@@ -1280,6 +1334,269 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     render();
   });
 
+  /* ---- third chart: per-day percentile bands over all years, with the two
+     youngest years laid on top. The bands are recomputed client-side from the
+     already-loaded series, so they follow the year-range selection; the two
+     overlay years are the subject and stay drawn regardless of the range. The
+     current year keeps its ramp red from the chart above; the previous year
+     wears the ramp's blue end, the farthest hue from that red, so the two
+     lines stay separable without leaning on the direct labels. ---- */
+  const CW = 960, CH = 340;
+  const CM = { top: 28, right: 16, bottom: 44, left: 62 };
+  const CPW = CW - CM.left - CM.right;
+  const CPH = CH - CM.top - CM.bottom;
+  const cx = d => CM.left + (d / (DAYS - 1)) * CPW;
+  const cy = v => {
+    const [lo, hi] = P().domain;   // same domain as the daily chart above
+    return CM.top + CPH - ((v - lo) / (hi - lo)) * CPH;
+  };
+
+  const cSvg = document.getElementById("clim");
+  const cGrid = document.getElementById("clim-grid");
+  const cAxes = document.getElementById("clim-axes");
+  const cBands = document.getElementById("clim-bands");
+  const cMedian = document.getElementById("clim-median");
+  const cCur = document.getElementById("clim-cur");
+  const cPrev = document.getElementById("clim-prev");
+  const cLabels = document.getElementById("clim-labels");
+  const cCross = document.getElementById("clim-crosshair");
+  const cDots = document.getElementById("clim-dots");
+  const cTip = document.getElementById("clim-tooltip");
+
+  const CUR_I = N - 1, PREV_I = N - 2;
+  document.getElementById("clim-title").textContent =
+    YEARS[CUR_I] + " und " + YEARS[PREV_I] + " im langjährigen Vergleich";
+  document.getElementById("clim-key-cur-label").textContent = YEARS[CUR_I];
+  document.getElementById("clim-key-prev-label").textContent = YEARS[PREV_I];
+  cCross.setAttribute("y1", CM.top);
+  cCross.setAttribute("y2", CM.top + CPH);
+
+  const CLIM_MIN_YEARS = 5;   // fewer values than this and a percentile is noise
+  let climRows = [];          // per day: null or {min, p05, p25, med, p75, p95, max, n}
+
+  function quantile(sorted, q) {
+    const h = (sorted.length - 1) * q, k = Math.floor(h), f = h - k;
+    return f ? sorted[k] * (1 - f) + sorted[k + 1] * f : sorted[k];
+  }
+
+  function drawClimAxes() {
+    const p = P();
+    cGrid.textContent = "";
+    cAxes.textContent = "";
+    p.ticks.forEach(v => {
+      cGrid.appendChild(el("line", { class: "grid-line", x1: CM.left, x2: CW - CM.right, y1: cy(v), y2: cy(v) }));
+      const t = el("text", { class: "tick", x: CM.left - 9, y: cy(v) + 4, "text-anchor": "end" });
+      t.textContent = p.tickNf.format(v);
+      cAxes.appendChild(t);
+    });
+    const base = CM.top + CPH;
+    cAxes.appendChild(el("line", { class: "axis-line", x1: CM.left, x2: CW - CM.right, y1: base, y2: base }));
+    D.months.forEach((name, i) => {
+      const mid = monthStart[i] + D.monthLengths[i] / 2;
+      const t = el("text", { class: "tick", x: cx(mid), y: base + 20, "text-anchor": "middle" });
+      t.textContent = name;
+      cAxes.appendChild(t);
+      if (i > 0) cGrid.appendChild(el("line", { class: "grid-line", x1: cx(monthStart[i]), x2: cx(monthStart[i]), y1: CM.top, y2: base }));
+    });
+    const yTitle = el("text", { class: "axis-title", x: CM.left - 9, y: CM.top - 12, "text-anchor": "end" });
+    yTitle.textContent = p.axis;
+    cAxes.appendChild(yTitle);
+  }
+
+  // a run of days without stats breaks band and median rather than bridging it
+  function climLinePath(valueAt) {
+    let d = "", pen = false;
+    for (let k = 0; k < DAYS; k++) {
+      const v = valueAt(k);
+      if (v == null) { pen = false; continue; }
+      d += (pen ? "L" : "M") + cx(k).toFixed(1) + " " + cy(v).toFixed(1) + " ";
+      pen = true;
+    }
+    return d.trim();
+  }
+
+  function drawClim() {
+    const vals = SERIES();
+    const [lo, hi] = effRange();
+    // the reference years: everything in the selected range except the two
+    // overlay years — a year should not help define the band it is judged against
+    const idxs = [];
+    for (let i = 0; i < N; i++) {
+      if (i === CUR_I || i === PREV_I) continue;
+      if (YEARS[i] < lo || YEARS[i] > hi || !HAS[pi][i]) continue;
+      idxs.push(i);
+    }
+    climRows = [];
+    for (let d = 0; d < DAYS; d++) {
+      const v = [];
+      for (const i of idxs) { const w = vals[i][d]; if (w != null) v.push(w); }
+      if (v.length < CLIM_MIN_YEARS) { climRows.push(null); continue; }
+      v.sort((a, b) => a - b);
+      climRows.push({
+        min: v[0], max: v[v.length - 1],
+        p05: quantile(v, 0.05), p25: quantile(v, 0.25), med: quantile(v, 0.5),
+        p75: quantile(v, 0.75), p95: quantile(v, 0.95), n: v.length,
+      });
+    }
+
+    drawClimAxes();
+
+    cBands.textContent = "";
+    const band = (loK, hiK, cls) => {
+      let d = "", seg = [];
+      const flush = () => {
+        if (seg.length > 1) {
+          d += "M" + seg.map(k => cx(k).toFixed(1) + " " + cy(climRows[k][hiK]).toFixed(1)).join(" L ")
+            + " L " + seg.slice().reverse().map(k => cx(k).toFixed(1) + " " + cy(climRows[k][loK]).toFixed(1)).join(" L ")
+            + " Z ";
+        }
+        seg = [];
+      };
+      for (let k = 0; k < DAYS; k++) climRows[k] ? seg.push(k) : flush();
+      flush();
+      if (d) cBands.appendChild(el("path", { class: "clim-band " + cls, d: d.trim() }));
+    };
+    band("min", "max", "clim-minmax");
+    band("p05", "p95", "clim-p90");
+    band("p25", "p75", "clim-p50");
+
+    cMedian.setAttribute("d", climLinePath(k => climRows[k] && climRows[k].med));
+    cCur.setAttribute("d", climLinePath(k => vals[CUR_I][k]));
+    cPrev.setAttribute("d", climLinePath(k => vals[PREV_I][k]));
+
+    climPaint();
+    drawClimLabels();
+    writeClimNote(idxs);
+  }
+
+  const prevColor = () => (isDark() ? D.prev.dark : D.prev.light);
+
+  function climPaint() {
+    cCur.setAttribute("stroke", colors[CUR_I]);
+    cPrev.setAttribute("stroke", prevColor());
+    document.getElementById("clim-key-cur").setAttribute("stroke", colors[CUR_I]);
+    document.getElementById("clim-key-prev").setAttribute("stroke", prevColor());
+  }
+
+  // the year labels sit at each line's end and wear text ink, not line colour
+  function drawClimLabels() {
+    cLabels.textContent = "";
+    const placed = [];
+    [CUR_I, PREV_I].forEach(i => {
+      const vals = SERIES()[i];
+      let k = DAYS - 1;
+      while (k >= 0 && vals[k] == null) k--;
+      if (k < 0) return;
+      const nearEdge = cx(k) > CW - CM.right - 44;
+      let ly = nearEdge ? cy(vals[k]) - 8 : cy(vals[k]) + 4;
+      // two lines ending close together must not merge their labels
+      for (const q of placed) if (Math.abs(q - ly) < 13) ly = q + 14;
+      placed.push(ly);
+      const t = el("text", {
+        class: "clim-label",
+        x: nearEdge ? cx(k) - 2 : cx(k) + 7, y: ly,
+        "text-anchor": nearEdge ? "end" : "start",
+      });
+      t.textContent = YEARS[i];
+      cLabels.appendChild(t);
+    });
+  }
+
+  function writeClimNote(idxs) {
+    const note = document.getElementById("clim-note");
+    const curY = YEARS[CUR_I], prevY = YEARS[PREV_I];
+    if (!idxs.length || climRows.every(r => !r)) {
+      note.textContent = `Im Bereich ${effLo()}–${effHi()} liegen zu wenige Jahrgänge `
+        + `für Vergleichsbänder; ${curY} und ${prevY} sind dennoch eingezeichnet.`;
+      return;
+    }
+    const y0 = YEARS[idxs[0]], y1 = YEARS[idxs[idxs.length - 1]];
+    note.textContent = `Je Kalendertag fassen die grauen Bänder die Tagesmittel der `
+      + `${idxs.length} Jahrgänge ${y0}–${y1} zusammen — Spannweite (Min–Max), 5.–95. und `
+      + `25.–75. Perzentil, die graue Linie den Median. Darüber liegen ${curY} (rot) `
+      + `und ${prevY} (blau); beide fliessen nicht in die Bänder ein und bleiben auch `
+      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Grafik oben.`;
+  }
+
+  function climLeave() {
+    cCross.style.opacity = 0;
+    cTip.style.opacity = 0;
+    cDots.textContent = "";
+  }
+
+  function drawClimReadout(day, box) {
+    const p = P();
+    cCross.style.opacity = 1;
+    cCross.setAttribute("x1", cx(day));
+    cCross.setAttribute("x2", cx(day));
+    cDots.textContent = "";
+    cTip.textContent = "";
+    const head = document.createElement("div");
+    head.className = "tt-day";
+    head.textContent = dayLabel(day);
+    cTip.appendChild(head);
+
+    const row = (color, value, label) => {
+      const r = document.createElement("div");
+      r.className = "tt-row";
+      const key = document.createElement("span");
+      key.className = "tt-key";
+      key.style.background = color;
+      const val = document.createElement("span");
+      val.className = "tt-val";
+      val.textContent = value;
+      const lab = document.createElement("span");
+      lab.className = "tt-lab";
+      lab.textContent = label;
+      r.append(key, val, lab);
+      cTip.appendChild(r);
+    };
+
+    [CUR_I, PREV_I].forEach(i => {
+      const v = SERIES()[i][day];
+      if (v == null) return;
+      const col = i === PREV_I ? prevColor() : colors[i];
+      row(col, fmt(v), YEARS[i]);
+      const g = el("g", { class: "dot", style: "opacity:1" });
+      g.appendChild(el("circle", { cx: cx(day), cy: cy(v), r: 4, fill: col }));
+      cDots.appendChild(g);
+    });
+
+    const r = climRows[day];
+    if (r) {
+      row("var(--text-secondary)", fmt(r.med), "Median");
+      const aux = (label, a, b) => {
+        const d = document.createElement("div");
+        d.className = "tt-aux";
+        d.textContent = label + " " + p.nf.format(a) + "–" + p.nf.format(b)
+          + (p.unit ? " " + p.unit : "");
+        cTip.appendChild(d);
+      };
+      aux("25–75 %", r.p25, r.p75);
+      aux("5–95 %", r.p05, r.p95);
+      aux("Min–Max", r.min, r.max);
+      const n = document.createElement("div");
+      n.className = "tt-sel";
+      n.textContent = "aus " + r.n + " Jahrgängen";
+      cTip.appendChild(n);
+    }
+
+    cTip.style.opacity = 1;
+    const px = (cx(day) / CW) * box.width;
+    const flip = px > box.width - cTip.offsetWidth - 24;
+    cTip.style.left = (flip ? px - cTip.offsetWidth - 14 : px + 14) + "px";
+    cTip.style.top = "10px";
+  }
+
+  cSvg.addEventListener("pointermove", ev => {
+    const box = cSvg.getBoundingClientRect();
+    const sx = ((ev.clientX - box.left) / box.width) * CW;
+    const day = Math.round(((sx - CM.left) / CPW) * (DAYS - 1));
+    if (day < 0 || day >= DAYS) { climLeave(); return; }
+    drawClimReadout(day, box);
+  });
+  cSvg.addEventListener("pointerleave", climLeave);
+
   /* ---- tabs: one parameter at a time, so the chart never carries two scales ---- */
   const tabsBox = document.getElementById("tabs");
   const panel = document.getElementById("panel");
@@ -1317,6 +1634,10 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       "Tagesmittel " + P().label + " des Rheins bei Rekingen" +
       (P().unit ? " in " + P().unit : "") +
       ", ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.");
+    cSvg.setAttribute("aria-label",
+      P().label + ": Tagesmittel von " + YEARS[CUR_I] + " und " + YEARS[PREV_I] +
+      " vor Perzentilbändern aller Jahrgänge — Minimum, 5., 25., Median, 75., " +
+      "95. Perzentil und Maximum je Kalendertag.");
     drawAxes();
     drawPaths();
     drawLegendTicks();
