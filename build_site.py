@@ -541,10 +541,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 <div class="wrap">
   <h1 class="title">Der Rhein bei Rekingen</h1>
   <p class="subtitle">
-    BAFU-Messstation 2143, Tagesmittel — ein Linienzug pro Jahr, über den
-    Jahresverlauf gelegt. Die Farbe codiert das Jahr, Blau die ältesten und Rot
-    die jüngsten Messungen. Das laufende Jahr ist hervorgehoben; eine Linie
-    anklicken hebt stattdessen deren Jahr hervor.
+    BAFU-Messstation 2143 — Tagesmittel von Wassertemperatur, Abfluss,
+    Wasserstand und Wasserchemie im Jahresvergleich. Die Farbe codiert das
+    Messjahr, Blau die ältesten und Rot die jüngsten Messungen.
   </p>
 
   <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
@@ -593,6 +592,10 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   </div>
 
   <div class="card" id="panel" role="tabpanel">
+    <div class="card-head">
+      <h2 class="card-title" id="chart-title">Alle Jahrgänge im Jahresverlauf</h2>
+    </div>
+    <p class="card-note" id="chart-note"></p>
     <div class="plot" id="plot">
       <svg id="chart" viewBox="0 0 960 470" role="img" tabindex="0"
            aria-label="Tagesmittel des Rheins bei Rekingen, ein Linienzug pro Jahr. Mit den Pfeiltasten Jahre durchgehen.">
@@ -818,6 +821,17 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   const inRange = i => YEARS[i] >= effLo() && YEARS[i] <= effHi();
   const visible = i => HAS[pi][i] && inRange(i);
 
+  // the card note names what is actually drawn, so it follows tab and range
+  function writeChartNote() {
+    const vis = YEARS.filter((_, k) => visible(k));
+    const span = vis.length > 1 ? ` ${vis[0]}–${vis[vis.length - 1]}` : "";
+    document.getElementById("chart-note").textContent =
+      `${P().label}: ${vis.length} Jahrgänge${span}, ein Linienzug pro Jahr über den `
+      + `Jahresverlauf gelegt. Die Farbe codiert das Messjahr — Blau die ältesten, Rot die `
+      + `jüngsten Messungen. Das laufende Jahr ist hervorgehoben; eine Linie oder ein Jahr `
+      + `in der Liste unten anklicken hebt stattdessen dieses Jahr hervor.`;
+  }
+
   function syncRange() {
     const p = P();
     loIn.min = hiIn.min = p.y0;
@@ -837,6 +851,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     if (selected != null && !visible(selected)) selected = null;
     if (hovered != null && !visible(hovered)) hovered = null;
     yearBtns.forEach((b, k) => { b.hidden = !visible(k); });
+    writeChartNote();
     drawTrend();   // the fit follows the selection
     drawClim();    // so do the percentile bands; the overlay years stay
     render();
@@ -1418,11 +1433,12 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   function drawClim() {
     const vals = SERIES();
     const [lo, hi] = effRange();
-    // the reference years: everything in the selected range except the two
-    // overlay years — a year should not help define the band it is judged against
+    // the reference years: everything in the selected range except the running
+    // year — its part-year record would bias the band it is judged against; the
+    // previous year is complete and counts like any other
     const idxs = [];
     for (let i = 0; i < N; i++) {
-      if (i === CUR_I || i === PREV_I) continue;
+      if (i === CUR_I) continue;
       if (YEARS[i] < lo || YEARS[i] > hi || !HAS[pi][i]) continue;
       idxs.push(i);
     }
@@ -1514,8 +1530,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     note.textContent = `Je Kalendertag fassen die grauen Bänder die Tagesmittel der `
       + `${idxs.length} Jahrgänge ${y0}–${y1} zusammen — Spannweite (Min–Max), 5.–95. und `
       + `25.–75. Perzentil, die graue Linie den Median. Darüber liegen ${curY} (rot) `
-      + `und ${prevY} (blau); beide fliessen nicht in die Bänder ein und bleiben auch `
-      + `bei eingegrenzter Jahresauswahl stehen. Die Achse entspricht der Jahrgangs-Grafik unten.`;
+      + `und ${prevY} (blau); ${prevY} zählt zu den Bändern, das laufende Jahr ${curY} `
+      + `fliesst nicht ein. Beide Linien bleiben auch bei eingegrenzter Jahresauswahl `
+      + `stehen. Die Achse entspricht der Jahrgangs-Grafik unten.`;
   }
 
   function climLeave() {
