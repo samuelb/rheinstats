@@ -306,8 +306,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     color: var(--text-primary);
     min-height: 100%;
     margin: 0;
-    /* 20px top keeps the icon buttons as far from the top edge as from the right */
-    padding: 20px 20px 56px;
+    padding: 28px 20px 56px;
+    position: relative;   /* anchor for the corner icons */
     -webkit-font-smoothing: antialiased;
     overflow-x: clip;
   }
@@ -339,10 +339,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   }
 
   .wrap { max-width: 1080px; margin: 0 auto; }
-  .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
+  .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 10px; letter-spacing: -0.01em; }
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
-  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .tabs {
     display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 14px;
     background: var(--ghost); border-radius: 9px;
@@ -359,14 +358,15 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   }
   .tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
 
-  /* icon buttons in the upper right corner: theme toggle and GitHub link */
+  /* icon buttons pinned to the upper right page corner, detached from the
+     text column: theme toggle and GitHub link */
+  .corner-icons { position: absolute; top: 20px; right: 20px; display: flex; gap: 10px; }
   .theme-toggle, .icon-link {
     width: 34px; height: 34px; padding: 0; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
     color: var(--text-secondary); background: var(--ghost);
     border: 0; border-radius: 9px; cursor: pointer;
   }
-  .theme-toggle { margin-left: auto; }
   .theme-toggle:hover, .icon-link:hover { color: var(--text-primary); }
   .theme-toggle:focus-visible, .icon-link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
   /* the filled GitHub mark spans its whole viewBox; the stroked theme icons
@@ -542,9 +542,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 </script>
 
 <div class="viz-root">
-<div class="wrap">
-  <div class="head">
-    <h1 class="title">Der Rhein bei Rekingen</h1>
+<div class="corner-icons">
     <button type="button" class="theme-toggle" id="theme-toggle" data-mode="auto"
             aria-label="Farbschema: System" title="Farbschema: System">
       <svg class="icon-auto" viewBox="0 0 24 24" aria-hidden="true">
@@ -566,7 +564,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
         <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
       </svg>
     </a>
-  </div>
+</div>
+<div class="wrap">
+  <h1 class="title">Der Rhein bei Rekingen</h1>
   <p class="subtitle">
     BAFU-Messstation 2143 — Tagesmittel von Wassertemperatur, Abfluss,
     Wasserstand und Wasserchemie im Jahresvergleich. Die Farbe codiert das
