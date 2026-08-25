@@ -306,7 +306,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     color: var(--text-primary);
     min-height: 100%;
     margin: 0;
-    padding: 28px 20px 56px;
+    /* 20px top keeps the icon buttons as far from the top edge as from the right */
+    padding: 20px 20px 56px;
     -webkit-font-smoothing: antialiased;
     overflow-x: clip;
   }
@@ -341,7 +342,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
-  .head { display: flex; align-items: center; gap: 10px; }
+  .head { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
   .tabs {
     display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 14px;
     background: var(--ghost); border-radius: 9px;
