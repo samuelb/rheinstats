@@ -341,9 +341,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
-  .toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; margin-bottom: 14px; }
+  .head { display: flex; align-items: center; gap: 10px; }
   .tabs {
-    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
+    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 14px;
     background: var(--ghost); border-radius: 9px;
   }
   .tab {
@@ -358,7 +358,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   }
   .tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
 
-  /* icon buttons at the right end of the toolbar: theme toggle and GitHub link */
+  /* icon buttons in the upper right corner: theme toggle and GitHub link */
   .theme-toggle, .icon-link {
     width: 34px; height: 34px; padding: 0; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
@@ -540,15 +540,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 
 <div class="viz-root">
 <div class="wrap">
-  <h1 class="title">Der Rhein bei Rekingen</h1>
-  <p class="subtitle">
-    BAFU-Messstation 2143 — Tagesmittel von Wassertemperatur, Abfluss,
-    Wasserstand und Wasserchemie im Jahresvergleich. Die Farbe codiert das
-    Messjahr, Blau die ältesten und Rot die jüngsten Messungen.
-  </p>
-
-  <div class="toolbar">
-    <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
+  <div class="head">
+    <h1 class="title">Der Rhein bei Rekingen</h1>
     <button type="button" class="theme-toggle" id="theme-toggle" data-mode="auto"
             aria-label="Farbschema: System" title="Farbschema: System">
       <svg class="icon-auto" viewBox="0 0 24 24" aria-hidden="true">
@@ -571,6 +564,13 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
       </svg>
     </a>
   </div>
+  <p class="subtitle">
+    BAFU-Messstation 2143 — Tagesmittel von Wassertemperatur, Abfluss,
+    Wasserstand und Wasserchemie im Jahresvergleich. Die Farbe codiert das
+    Messjahr, Blau die ältesten und Rot die jüngsten Messungen.
+  </p>
+
+  <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
 
   <div class="legend">
     <div class="legend-cap">Messjahr<span id="range-label"></span>
