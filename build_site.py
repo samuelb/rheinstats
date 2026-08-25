@@ -308,7 +308,6 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     margin: 0;
     padding: 28px 20px 56px;
     -webkit-font-smoothing: antialiased;
-    position: relative;   /* anchor for the GitHub corner */
     overflow-x: clip;
   }
   @media (prefers-color-scheme: dark) {
@@ -338,31 +337,7 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     --ghost: rgba(255, 255, 255, 0.06);
   }
 
-  /* GitHub corner — the octocat waves out of the top right, after
-     github.com/tholman/github-corners (MIT). Inlined, no external assets. */
-  .github-corner { position: absolute; top: 0; right: 0; color: var(--surface-1); }
-  .github-corner svg { display: block; width: 80px; height: 80px; fill: var(--text-primary); }
-  .github-corner:focus-visible { outline: 2px solid var(--text-primary); outline-offset: -8px; }
-  .octo-arm { transform-origin: 130px 106px; }
-  .github-corner:hover .octo-arm { animation: octocat-wave 560ms ease-in-out; }
-  @keyframes octocat-wave {
-    0%, 100% { transform: rotate(0); }
-    20%, 60% { transform: rotate(-25deg); }
-    40%, 80% { transform: rotate(10deg); }
-  }
-  /* no hover on touch, so wave once on arrival instead */
-  @media (max-width: 700px) {
-    .github-corner svg { width: 60px; height: 60px; }
-    .github-corner:hover .octo-arm { animation: none; }
-    .github-corner .octo-arm { animation: octocat-wave 560ms ease-in-out; }
-  }
-  @media (prefers-reduced-motion: reduce) {
-    .github-corner .octo-arm, .github-corner:hover .octo-arm { animation: none; }
-  }
-
   .wrap { max-width: 1080px; margin: 0 auto; }
-  /* below this width the corner reaches into the centred column */
-  @media (max-width: 1240px) { .title, .subtitle { padding-right: 88px; } }
   .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
@@ -383,17 +358,21 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   }
   .tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
 
-  /* theme toggle: one icon button cycling System -> Hell -> Dunkel. The icon
-     names the current mode — a monitor while the OS scheme decides, sun for
-     an explicit light choice, moon for an explicit dark one. */
-  .theme-toggle {
-    margin-left: auto; width: 34px; height: 34px; padding: 0; flex: none;
+  /* icon buttons at the right end of the toolbar: theme toggle and GitHub link */
+  .theme-toggle, .icon-link {
+    width: 34px; height: 34px; padding: 0; flex: none;
     display: inline-flex; align-items: center; justify-content: center;
     color: var(--text-secondary); background: var(--ghost);
     border: 0; border-radius: 9px; cursor: pointer;
   }
-  .theme-toggle:hover { color: var(--text-primary); }
-  .theme-toggle:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+  .theme-toggle { margin-left: auto; }
+  .theme-toggle:hover, .icon-link:hover { color: var(--text-primary); }
+  .theme-toggle:focus-visible, .icon-link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+  .icon-link svg { width: 18px; height: 18px; fill: currentColor; }
+
+  /* theme toggle cycles System -> Hell -> Dunkel. The icon names the current
+     mode — a monitor while the OS scheme decides, sun for an explicit light
+     choice, moon for an explicit dark one. */
   .theme-toggle svg {
     width: 18px; height: 18px; display: none; fill: none;
     stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
@@ -560,14 +539,6 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
 </script>
 
 <div class="viz-root">
-<a class="github-corner" href="https://github.com/samuelb/rheinstats"
-   target="_blank" rel="noopener" aria-label="Quellcode und Daten auf GitHub ansehen">
-  <svg viewBox="0 0 250 250" aria-hidden="true">
-    <path d="M0,0 L115,115 L130,115 L142,142 L250,250 L250,0 Z"></path>
-    <path class="octo-arm" fill="currentColor" d="M128.3,109.0 C113.8,99.7 119.0,89.6 119.0,89.6 C122.0,82.7 120.5,78.6 120.5,78.6 C119.2,72.0 123.4,76.3 123.4,76.3 C127.3,80.9 125.5,87.3 125.5,87.3 C122.9,97.6 130.6,101.9 134.4,103.2"></path>
-    <path class="octo-body" fill="currentColor" d="M115.0,115.0 C114.9,115.1 118.7,116.5 119.8,115.4 L133.7,101.8 C136.9,99.2 139.9,98.4 142.2,98.6 C133.8,88.0 127.5,74.4 143.8,58.0 C148.5,53.4 154.0,51.2 159.7,51.0 C160.3,49.4 163.2,43.6 171.4,40.1 C171.4,40.1 176.1,42.5 178.8,56.2 C183.1,58.4 187.2,61.2 190.9,64.9 C194.5,68.5 197.3,72.5 199.5,76.7 C213.2,79.4 215.7,84.1 215.7,84.1 C212.2,92.3 206.4,95.2 204.8,95.8 C204.6,101.5 202.4,107.0 197.8,111.7 C181.4,128.0 167.8,121.7 157.2,113.3 C157.4,115.6 156.6,118.6 154.0,121.8 L140.4,135.7 C139.3,136.8 140.7,140.6 140.8,140.5"></path>
-  </svg>
-</a>
 <div class="wrap">
   <h1 class="title">Der Rhein bei Rekingen</h1>
   <p class="subtitle">
@@ -592,6 +563,13 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
         <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
       </svg>
     </button>
+    <a class="icon-link" href="https://github.com/samuelb/rheinstats" target="_blank"
+       rel="noopener" aria-label="Quellcode und Daten auf GitHub" title="Quellcode und Daten auf GitHub">
+      <!-- the GitHub mark; drawn filled, unlike the stroked theme icons -->
+      <svg viewBox="0 0 16 16" aria-hidden="true">
+        <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"></path>
+      </svg>
+    </a>
   </div>
 
   <div class="legend">
@@ -695,6 +673,8 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     Jahresganglinien von hydrodaten.admin.ch. Wasserstand (eine Höhe über Meer),
     Leitfähigkeit, pH-Wert und Sauerstoff-Sättigung tragen auf die Messwerte
     gezoomte Achsen ohne Nullpunkt. __NOTE__
+    Quellcode und Daten auf <a href="https://github.com/samuelb/rheinstats"
+    target="_blank" rel="noopener">GitHub</a>.
   </p>
   <footer class="note stamp">__STAMP__</footer>
 </div>
