@@ -366,8 +366,9 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .title { font-size: 1.4rem; font-weight: 600; margin: 0 0 4px; letter-spacing: -0.01em; }
   .subtitle { font-size: 0.9rem; color: var(--text-secondary); margin: 0 0 20px; line-height: 1.5; }
 
+  .toolbar { display: flex; flex-wrap: wrap; align-items: flex-start; gap: 10px 14px; margin-bottom: 14px; }
   .tabs {
-    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px; margin-bottom: 14px;
+    display: inline-flex; flex-wrap: wrap; gap: 2px; padding: 3px;
     background: var(--ghost); border-radius: 9px;
   }
   .tab {
@@ -381,6 +382,25 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     font-weight: 600; box-shadow: 0 1px 3px rgba(0,0,0,.10);
   }
   .tab:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+
+  /* theme toggle: one icon button cycling System -> Hell -> Dunkel. The icon
+     names the current mode — a monitor while the OS scheme decides, sun for
+     an explicit light choice, moon for an explicit dark one. */
+  .theme-toggle {
+    margin-left: auto; width: 34px; height: 34px; padding: 0; flex: none;
+    display: inline-flex; align-items: center; justify-content: center;
+    color: var(--text-secondary); background: var(--ghost);
+    border: 0; border-radius: 9px; cursor: pointer;
+  }
+  .theme-toggle:hover { color: var(--text-primary); }
+  .theme-toggle:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
+  .theme-toggle svg {
+    width: 18px; height: 18px; display: none; fill: none;
+    stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
+  }
+  .theme-toggle[data-mode="auto"] .icon-auto { display: block; }
+  .theme-toggle[data-mode="light"] .icon-sun { display: block; }
+  .theme-toggle[data-mode="dark"] .icon-moon { display: block; }
 
   svg:focus { outline: none; }   /* a click must not leave a ring; keyboard still does */
   svg:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 3px; border-radius: 8px; }
@@ -529,6 +549,16 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .stamp { margin-top: 8px; }
 </style>
 
+<script>
+  /* a stored theme choice wins over the OS scheme; stamped before the page
+     below is parsed, so the wrong theme never flashes on load */
+  try {
+    var storedTheme = localStorage.getItem("rheinstats-theme");
+    if (storedTheme === "light" || storedTheme === "dark")
+      document.documentElement.setAttribute("data-theme", storedTheme);
+  } catch (e) {}
+</script>
+
 <div class="viz-root">
 <a class="github-corner" href="https://github.com/samuelb/rheinstats"
    target="_blank" rel="noopener" aria-label="Quellcode und Daten auf GitHub ansehen">
@@ -546,7 +576,23 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
     Messjahr, Blau die ältesten und Rot die jüngsten Messungen.
   </p>
 
-  <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
+  <div class="toolbar">
+    <div class="tabs" id="tabs" role="tablist" aria-label="Messgrösse"></div>
+    <button type="button" class="theme-toggle" id="theme-toggle" data-mode="auto"
+            aria-label="Farbschema: System" title="Farbschema: System">
+      <svg class="icon-auto" viewBox="0 0 24 24" aria-hidden="true">
+        <rect x="3" y="4.5" width="18" height="13" rx="2"></rect>
+        <path d="M8.5 21h7M12 17.5V21"></path>
+      </svg>
+      <svg class="icon-sun" viewBox="0 0 24 24" aria-hidden="true">
+        <circle cx="12" cy="12" r="4.4"></circle>
+        <path d="M12 2v2.4M12 19.6V22M2 12h2.4M19.6 12H22M4.9 4.9l1.7 1.7M17.4 17.4l1.7 1.7M19.1 4.9l-1.7 1.7M6.6 17.4l-1.7 1.7"></path>
+      </svg>
+      <svg class="icon-moon" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M21 12.8A9 9 0 1 1 11.2 3a7 7 0 0 0 9.8 9.8z"></path>
+      </svg>
+    </button>
+  </div>
 
   <div class="legend">
     <div class="legend-cap">Messjahr<span id="range-label"></span>
@@ -778,6 +824,33 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   }
   matchMedia("(prefers-color-scheme: dark)").addEventListener("change", paint);
   new MutationObserver(paint).observe(document.documentElement, { attributes: true, attributeFilter: ["data-theme"] });
+
+  /* ---- theme toggle: cycles System -> Hell -> Dunkel. An explicit choice is
+     stamped on <html> (the MutationObserver above repaints) and kept in
+     localStorage; System clears both and the OS scheme decides again. ---- */
+  const themeToggle = document.getElementById("theme-toggle");
+  const THEME_MODES = ["auto", "light", "dark"];
+  const THEME_LABELS = { auto: "Farbschema: System", light: "Farbschema: Hell", dark: "Farbschema: Dunkel" };
+  function setThemeMode(mode) {
+    if (mode === "auto") document.documentElement.removeAttribute("data-theme");
+    else document.documentElement.setAttribute("data-theme", mode);
+    try {
+      if (mode === "auto") localStorage.removeItem("rheinstats-theme");
+      else localStorage.setItem("rheinstats-theme", mode);
+    } catch (e) {}
+    themeToggle.dataset.mode = mode;
+    themeToggle.setAttribute("aria-label", THEME_LABELS[mode]);
+    themeToggle.setAttribute("title", THEME_LABELS[mode]);
+  }
+  themeToggle.addEventListener("click", () => {
+    const cur = themeToggle.dataset.mode;
+    setThemeMode(THEME_MODES[(THEME_MODES.indexOf(cur) + 1) % THEME_MODES.length]);
+  });
+  // reflect a choice stored on an earlier visit (the head script already stamped it)
+  try {
+    const stored = localStorage.getItem("rheinstats-theme");
+    if (stored === "light" || stored === "dark") setThemeMode(stored);
+  } catch (e) {}
 
   /* ---- legend ticks, placed at their true position on the year scale ---- */
   const ticks = document.getElementById("legend-ticks");
