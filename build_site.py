@@ -368,13 +368,15 @@ TEMPLATE = r"""<title>Der Rhein bei Rekingen — Temperatur, Abfluss, Wasserstan
   .theme-toggle { margin-left: auto; }
   .theme-toggle:hover, .icon-link:hover { color: var(--text-primary); }
   .theme-toggle:focus-visible, .icon-link:focus-visible { outline: 2px solid var(--text-primary); outline-offset: 1px; }
-  .icon-link svg { width: 18px; height: 18px; fill: currentColor; }
+  /* the filled GitHub mark spans its whole viewBox; the stroked theme icons
+     only ~3/4 of theirs — the sizes below even out the drawn glyphs */
+  .icon-link svg { width: 16px; height: 16px; fill: currentColor; }
 
   /* theme toggle cycles System -> Hell -> Dunkel. The icon names the current
      mode — a monitor while the OS scheme decides, sun for an explicit light
      choice, moon for an explicit dark one. */
   .theme-toggle svg {
-    width: 18px; height: 18px; display: none; fill: none;
+    width: 20px; height: 20px; display: none; fill: none;
     stroke: currentColor; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round;
   }
   .theme-toggle[data-mode="auto"] .icon-auto { display: block; }
