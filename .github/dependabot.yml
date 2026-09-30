@@ -1,0 +1,13 @@
+# The only dependencies are the workflow actions. Minor/patch bumps are grouped
+# into a single weekly PR; majors stay separate since they need a closer look.
+version: 2
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    assignees:
+      - samuelb
+    groups:
+      actions-minor-patch:
+        update-types: [minor, patch]
