@@ -14,7 +14,7 @@ jobs:
     env:
       TZ: Europe/Zurich # "yesterday" in fetch_hydrodaten.py follows station time
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
 
       - name: Fetch newest daily means from hydrodaten.admin.ch
         run: python3 fetch_hydrodaten.py
